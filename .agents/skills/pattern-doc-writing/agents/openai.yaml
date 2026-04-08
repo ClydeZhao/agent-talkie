@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pattern Doc Writing"
+  short_description: "Write high-signal pattern docs."
+  default_prompt: "Use $pattern-doc-writing to rewrite this as a concise pattern document that explains the core idea before implementation details, avoids filler and inflated AI-style prose, and stays abstract but concrete."
