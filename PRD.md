@@ -1,6 +1,6 @@
 # agent-talkie PRD
 
-Status: Draft  
+Status: Current  
 Last updated: 2026-04-08
 
 A collaboration layer for coding agents that already run in different products.
