@@ -11,3 +11,8 @@ export {
   relayRouteFamilyFromKey,
   relayRouteKeyFromEnvelope,
 } from "./relay_routing.js";
+export type {
+  TalkieInboundFrame,
+  TalkieOutboundFrame,
+  TalkieTransport,
+} from "./transport.js";
