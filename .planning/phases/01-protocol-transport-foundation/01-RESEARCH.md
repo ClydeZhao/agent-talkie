@@ -270,8 +270,6 @@ await nc.close();
 | A2 | Integer `schema_version` is sufficient for v1 (no semver string) | User Constraints | If future needs prerelease channels, encoding may need extension |
 | A3 | One JetStream stream can cover both `control` and `conversation` subjects with two consumer groups | Architecture Patterns | If isolation requirements grow, split streams (still fine if subjects differ) |
 
-**If this table is empty:** N/A — assumptions listed above require planner/executor confirmation where marked.
-
 ## Open Questions
 
 1. **Wire casing convention (camelCase vs snake_case)?**  
