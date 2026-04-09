@@ -35,13 +35,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. Control traffic (join, leave, metadata updates) is distinguishable from conversation traffic on the wire or in the same documented channel split.
 4. Clients sending an unsupported schema version receive a clear rejection and a documented upgrade path.
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 
-- [ ] 01-01-PLAN.md — Monorepo, Zod envelope, idempotency guard, JSON Schema, schema rejection (PROTO-01, PROTO-02, PROTO-04)
-- [ ] 01-02-PLAN.md — NATS subject builders; control vs conversation hierarchies (PROTO-03)
-- [ ] 01-03-PLAN.md — Docker Compose NATS/Postgres; JetStream msgID dedup integration test (PROTO-02)
+- 01-01-PLAN.md — Monorepo, Zod envelope, idempotency guard, JSON Schema, schema rejection (PROTO-01, PROTO-02, PROTO-04)
+- 01-02-PLAN.md — NATS subject builders; control vs conversation hierarchies (PROTO-03)
+- 01-03-PLAN.md — Docker Compose NATS/Postgres; JetStream msgID dedup integration test (PROTO-02)
 
 ### Phase 2: Session identity, spaces & membership
 
@@ -56,6 +56,7 @@ Plans:
 4. A human can create a named space; sessions join only through an explicit opt-in action; they can leave; owners can revoke membership.
 5. Multiple humans can participate in the same space with their own local sessions; membership survives typical runtime restarts for that session.
 6. Session lifecycle states (active, idle, blocked, error) are visible for coordination.
+
 **Plans**: TBD
 
 ### Phase 3: Relay, routing & orchestration
@@ -71,6 +72,7 @@ Plans:
 4. Within a space, delivery is at-least-once with deduplication behavior consistent with the protocol.
 5. A designated orchestrator receives human-to-space input by default, can dispatch work to specific sessions, and can follow up on stalled threads with an understandable summary of state.
 6. Peers attempt to resolve questions among themselves before escalating to a human.
+
 **Plans**: TBD
 
 ### Phase 4: First runtime adapter
@@ -82,6 +84,7 @@ Plans:
 
 1. From the chosen runtime, a user can perform join/send/receive flows that map to the normalized protocol without hand-copying payloads.
 2. Runtime-specific quirks are translated at the edge; routing, orchestration, and membership rules are not reimplemented inside the adapter.
+
 **Plans**: TBD
 
 ### Phase 5: Collaboration metadata & second adapter
@@ -93,6 +96,7 @@ Plans:
 
 1. At least two distinct runtime adapters are in use and can participate in the same space scenarios.
 2. Role, progress, and focus for sessions are stored and exposed by the collaboration layer so other sessions (and oversight tools) can see them.
+
 **Plans**: TBD
 
 ### Phase 6: Human oversight surface
@@ -105,6 +109,7 @@ Plans:
 1. A human can open a view of collaboration activity in a space as a timeline or transcript suitable for understanding what happened.
 2. A human can see which sessions are in the space and their current status at a glance.
 3. A human can send messages into the space (e.g., to the orchestrator path) without manually shuttling peer content between tools.
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -119,6 +124,7 @@ Plans:
 2. Access between relay/adapters and control plane reflects explicit authentication (no permanent anonymous bearer join).
 3. Abuse and overload are bounded by documented rate limits or backpressure behavior appropriate for v1.
 4. Retention, redaction defaults, and recovery expectations for collaboration logs are documented and reflected in behavior where applicable.
+
 **Plans**: TBD
 **UI hint**: yes
 
@@ -130,7 +136,7 @@ Phases execute in numeric order: 2 → 2.1 → 2.2 → 3 → 3.1 → 4
 
 | Phase                                      | Plans Complete | Status      | Completed |
 | ------------------------------------------ | -------------- | ----------- | --------- |
-| 1. Protocol & transport foundation         | 0/3            | Not started | -         |
+| 1. Protocol & transport foundation         | 1/3            | In Progress | -         |
 | 2. Session identity, spaces & membership   | 0/TBD          | Not started | -         |
 | 3. Relay, routing & orchestration          | 0/TBD          | Not started | -         |
 | 4. First runtime adapter                   | 0/TBD          | Not started | -         |
