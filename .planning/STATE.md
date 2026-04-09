@@ -22,9 +22,9 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Phase 1: Protocol & persistence foundation**
 
-Status: Not started
+Status: Planned (ready to execute)
 
-Plans: 0/0
+Plans: 0/4 (execute `/gsd-execute-phase 1`)
 
 ---
 

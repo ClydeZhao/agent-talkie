@@ -14,6 +14,15 @@
 
 **Requirements:** PROTO-01, PROTO-02, PROTO-03, PROTO-04, PROTO-05, PROTO-06, SESS-01, SESS-02, SESS-03, SESS-04
 
+**Plans:** 4 plans
+
+Plans:
+
+- [ ] 01-01-PLAN.md — Monorepo + Zod envelope (PROTO-01, PROTO-03 wire, PROTO-04, PROTO-05)
+- [ ] 01-02-PLAN.md — JSON Schema export + handshake version negotiation (PROTO-02, PROTO-06)
+- [ ] 01-03-PLAN.md — SQLite migrations, openDatabase, migrate runner (PROTO-03 DDL)
+- [ ] 01-04-PLAN.md — Session + idempotency repositories, restart test (PROTO-03 dedup API, SESS-01–SESS-04)
+
 **Success criteria:**
 
 1. A consumer can serialize and parse a message envelope that passes Zod validation and carries an explicit wire version; invalid payloads fail with structured errors.
