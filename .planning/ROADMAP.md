@@ -35,13 +35,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. Control traffic (join, leave, metadata updates) is distinguishable from conversation traffic on the wire or in the same documented channel split.
 4. Clients sending an unsupported schema version receive a clear rejection and a documented upgrade path.
 
-**Plans:** 1/3 plans executed
+**Plans:** 1/3 plans executed (01-02 and 01-03 replanned for relay + SQLite; NATS/Compose plans superseded)
 
 Plans:
 
 - 01-01-PLAN.md — Monorepo, Zod envelope, idempotency guard, JSON Schema, schema rejection (PROTO-01, PROTO-02, PROTO-04)
-- 01-02-PLAN.md — NATS subject builders; control vs conversation hierarchies (PROTO-03)
-- 01-03-PLAN.md — Docker Compose NATS/Postgres; JetStream msgID dedup integration test (PROTO-02)
+- 01-02-PLAN.md — Relay route keys from envelope.type; TalkieTransport types; thread_id token parity with space_id (PROTO-01, PROTO-03)
+- 01-03-PLAN.md — Embedded WebSocket relay + SQLite idempotency; ingress parseEnvelope + size cap; Vitest without Docker (PROTO-01–PROTO-04)
 
 ### Phase 2: Session identity, spaces & membership
 
