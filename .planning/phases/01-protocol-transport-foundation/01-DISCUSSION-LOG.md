@@ -4,76 +4,87 @@
 > Decisions are captured in CONTEXT.md — this log preserves the alternatives considered.
 
 **Date:** 2026-04-09
-**Phase:** 1-protocol-transport-foundation
-**Areas discussed:** Envelope design, Transport selection, Schema evolution strategy, Channel topology
-**Mode:** --auto (all choices are recommended defaults)
+**Phase:** 01-protocol-transport-foundation
+**Areas discussed:** Default transport mechanism, Relay lifecycle, Architectural hard constraints
+**Trigger:** User-initiated architectural pivot — removing NATS + Postgres as default dependencies
 
 ---
 
-## Envelope Design
+## Architectural Hard Constraints (user-provided, pre-decided)
 
+User entered the discussion with locked constraints, not as gray areas:
 
-| Option                     | Description                                                                                | Selected |
-| -------------------------- | ------------------------------------------------------------------------------------------ | -------- |
-| Comprehensive from day one | Include all metadata fields (version, id, thread, sender, space, type, timestamp, payload) | ✓        |
-| Minimal starter            | Start with version + id + type only, add fields as needed                                  |          |
+- Default = zero external services
+- `npm install` / `npx` must work immediately
+- NATS and Postgres cannot be default dependencies
+- SQLite as default metadata store
+- JSON/MD/JSONL as export/debug artifacts only
+- No explicit solo/local/team mode switching — local-first, multi-participant via invite/join
 
-
-**User's choice:** [auto] Comprehensive from day one (recommended default)
-**Notes:** Research warns against stringly-typed payloads as tech debt (PITFALLS.md). Starting comprehensive avoids costly envelope migrations later.
-
----
-
-## Transport Selection
-
-
-| Option           | Description                                                         | Selected |
-| ---------------- | ------------------------------------------------------------------- | -------- |
-| NATS + JetStream | Subject routing, request/reply, durable mailboxes, polyglot clients | ✓        |
-| WebSocket-direct | Simpler setup, limited to browser-friendly runtimes                 |          |
-| Redis Pub/Sub    | Familiar, but weaker routing and durability semantics               |          |
-
-
-**User's choice:** [auto] NATS + JetStream (recommended default)
-**Notes:** STACK.md research recommends NATS 2.12.x. Subject-based routing maps naturally to spaces/sessions. JetStream provides durability.
+These were accepted as hard constraints, not discussed as options.
 
 ---
 
-## Schema Evolution Strategy
+## Default Transport Mechanism
 
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Embedded localhost WebSocket relay | First session starts relay, same protocol for local/remote | |
+| WebSocket relay + stdio bridge (layered) | Core = relay-based WS; stdio as adapter edge concern | ✓ |
+| Unix domain socket / IPC | Pure local, no remote support | |
 
-| Option                             | Description                                                           | Selected |
-| ---------------------------------- | --------------------------------------------------------------------- | -------- |
-| Strict rejection with upgrade path | Reject unknown versions with clear error and documented upgrade       | ✓        |
-| Graceful degradation               | Best-effort interpretation of unknown fields, ignore unknown versions |          |
+**User's choice:** Layered architecture — core transport is relay-based WebSocket (same protocol for localhost and remote, only address differs). stdio bridge is a separate adapter ingress concern, not the system's transport model. These two layers must be architecturally distinct.
 
-
-**User's choice:** [auto] Strict rejection with upgrade path (recommended default)
-**Notes:** Research pitfall CP-2 warns against happy-path-only protocols. Strict rejection catches mismatches early.
+**Notes:** User explicitly rejected mixing transport model with adapter ingress mechanism. The relay protocol is the canonical transport; adapter ingress (WS client, stdio, etc.) is how each adapter connects to the relay.
 
 ---
 
-## Channel Topology
+## Relay Process Lifecycle
 
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Embedded in first session | Relay inside session process, migrates or dies with it | |
+| Independent daemon | Auto-spawn on first need, auto-shutdown when all sessions exit | ✓ |
+| Explicit CLI start | User manually starts relay via command | |
+| Claude decides | Defer to researcher/planner | |
 
-| Option                            | Description                                                        | Selected |
-| --------------------------------- | ------------------------------------------------------------------ | -------- |
-| Separate NATS subject hierarchies | Different subjects for control vs conversation traffic             | ✓        |
-| Single channel with type field    | All traffic on same subjects, distinguished by envelope type field |          |
+**User's choice:** Independent daemon process — Docker daemon-style lifecycle.
 
+**Notes:** None.
 
-**User's choice:** [auto] Separate NATS subject hierarchies (recommended default)
-**Notes:** Research recommends separating control from conversation (CP-3). Enables independent scaling and monitoring.
+---
+
+## Control vs Conversation Separation
+
+Not explicitly selected as a gray area, but resolved as consequence of transport decisions: separation happens at protocol/semantic layer via envelope `type` field, not at transport layer (no NATS subject hierarchy needed).
+
+---
+
+## Impact Assessment
+
+### Preserved from prior context
+- D-01, D-02 (envelope design)
+- D-05, D-06 (schema evolution)
+- All Plan 01-01 code (envelope.ts, idempotency.ts, errors.ts)
+
+### Invalidated
+- D-03, D-04, D-07, D-08 (NATS-specific transport decisions)
+- Plan 01-02 (NATS subject builders)
+- Plan 01-03 (Docker Compose NATS/Postgres + JetStream dedup)
+- STACK.md as normative reference (demoted to optional team/remote reference)
 
 ---
 
 ## Claude's Discretion
 
-- Exact Zod schema field types and validation rules
-- NATS subject naming details beyond the convention
-- JetStream stream configuration
+- WebSocket frame format
+- Relay daemon port selection
+- SQLite schema design
 - Test harness approach
 
 ## Deferred Ideas
 
-None — discussion stayed within phase scope.
+- NATS transport plugin for team/remote mode
+- Postgres as alternative metadata store
+- Relay clustering
+- Binary protocol (protobuf)
