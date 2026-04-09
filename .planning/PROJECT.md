@@ -16,18 +16,18 @@ Running agent sessions can collaborate directly across runtime boundaries withou
 
 ### Active
 
-- [ ] Named sessions with stable identity, runtime context, and workspace awareness
-- [ ] Shared collaboration spaces where multiple sessions participate
-- [ ] Direct session-to-session messaging across runtimes
-- [ ] Orchestrator role that receives default human input and coordinates work
-- [ ] Multi-turn conversation support (not just one-shot dispatch)
-- [ ] Peer-first question resolution before human escalation
-- [ ] Collaboration metadata managed by the collaboration layer (role, progress, focus)
-- [ ] Human-visible surface for oversight and intervention
-- [ ] Explicit opt-in participation (slash command or attach flow)
-- [ ] Multiple humans with their own local sessions in the same space
-- [ ] Local context stays local — collaboration layer coordinates, not absorbs
-- [ ] Workspace awareness sufficient for meaningful collaboration
+- Named sessions with stable identity, runtime context, and workspace awareness
+- Shared collaboration spaces where multiple sessions participate
+- Direct session-to-session messaging across runtimes
+- Orchestrator role that receives default human input and coordinates work
+- Multi-turn conversation support (not just one-shot dispatch)
+- Peer-first question resolution before human escalation
+- Collaboration metadata managed by the collaboration layer (role, progress, focus)
+- Human-visible surface for oversight and intervention
+- Explicit opt-in participation (slash command or attach flow)
+- Multiple humans with their own local sessions in the same space
+- Local context stays local — collaboration layer coordinates, not absorbs
+- Workspace awareness sufficient for meaningful collaboration
 
 ### Out of Scope
 
@@ -48,6 +48,7 @@ This applies at the individual level (one person using several tools) and at the
 The product pattern is: a set of concrete running sessions, a shared collaboration space, explicit routing between sessions, an orchestrator role when coordination is needed, and a human-visible surface for oversight.
 
 **Design principles:**
+
 - Session first (unit of collaboration is a session, not a runtime brand)
 - Conversation first (optimize for ongoing back-and-forth, not one-way delegation)
 - Existing runtime first (connect sessions users already run, no hosted execution required)
@@ -70,18 +71,21 @@ The product pattern is: a set of concrete running sessions, a shared collaborati
 
 ## Key Decisions
 
-| Decision | Rationale | Outcome |
-|----------|-----------|---------|
-| Session as unit of collaboration, not runtime brand | Users may run multiple sessions from the same runtime; addressing by brand is ambiguous | — Pending |
-| Conversation-first over task-first | Value appears when sessions keep talking after initial dispatch (clarify, challenge, negotiate) | — Pending |
-| Tool layer with narrow built-in semantics | Richer information exchange should happen through harnesses, not platform-native artifact models | — Pending |
-| Collaboration metadata in collaboration layer, not worker repos | Role, progress, focus exist to make work legible to other sessions and the human | — Pending |
+
+| Decision                                                        | Rationale                                                                                        | Outcome   |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------- |
+| Session as unit of collaboration, not runtime brand             | Users may run multiple sessions from the same runtime; addressing by brand is ambiguous          | — Pending |
+| Conversation-first over task-first                              | Value appears when sessions keep talking after initial dispatch (clarify, challenge, negotiate)  | — Pending |
+| Tool layer with narrow built-in semantics                       | Richer information exchange should happen through harnesses, not platform-native artifact models | — Pending |
+| Collaboration metadata in collaboration layer, not worker repos | Role, progress, focus exist to make work legible to other sessions and the human                 | — Pending |
+
 
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
 
 **After each phase transition** (via `/gsd-transition`):
+
 1. Requirements invalidated? → Move to Out of Scope with reason
 2. Requirements validated? → Move to Validated with phase reference
 3. New requirements emerged? → Add to Active
@@ -89,10 +93,12 @@ This document evolves at phase transitions and milestone boundaries.
 5. "What This Is" still accurate? → Update if drifted
 
 **After each milestone** (via `/gsd-complete-milestone`):
+
 1. Full review of all sections
 2. Core Value check — still the right priority?
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
 ---
+
 *Last updated: 2026-04-09 after initialization*

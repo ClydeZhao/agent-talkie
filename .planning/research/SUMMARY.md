@@ -17,7 +17,7 @@ The **MVP path** is explicit: named stable **session identity**, opt-in space me
 
 ### Recommended Stack
 
-Prefer a **NATS-centric** data plane: **NATS Server 2.12.6** (pin; track patches) with **JetStream** for durability where needed; **@nats-io/transport-node** + **@nats-io/jetstream** (~3.3.1) for Node/TS—not legacy `nats@2.x`. Use **Hono** (~4.12.x) for HTTP (auth, space/session admin, health). Persist collaboration metadata in **PostgreSQL 16+** via **Drizzle** (~0.45.x) and **postgres** driver (~3.4.x). Validate application JSON with **Zod** (~4.3.x). Optional: **ioredis** for TTL/ephemeral state or Socket.IO scale-out; **Socket.IO** or **ws** at the edge for browser-heavy clients—**do not** make Socket.IO the sole cross-runtime truth; keep **one** envelope schema behind transports. **JSON + Zod** default; Protobuf only if cross-language strict IDL justifies cost. Refresh exact patch pins before implementation.
+Prefer a **NATS-centric** data plane: **NATS Server 2.12.6** (pin; track patches) with **JetStream** for durability where needed; **@nats-io/transport-node** + **@nats-io/jetstream** (~~3.3.1) for Node/TS—not legacy `nats@2.x`. Use **Hono** (~~4.12.x) for HTTP (auth, space/session admin, health). Persist collaboration metadata in **PostgreSQL 16+** via **Drizzle** (~~0.45.x) and **postgres** driver (~~3.4.x). Validate application JSON with **Zod** (~4.3.x). Optional: **ioredis** for TTL/ephemeral state or Socket.IO scale-out; **Socket.IO** or **ws** at the edge for browser-heavy clients—**do not** make Socket.IO the sole cross-runtime truth; keep **one** envelope schema behind transports. **JSON + Zod** default; Protobuf only if cross-language strict IDL justifies cost. Refresh exact patch pins before implementation.
 
 **Core technologies:**
 
@@ -52,7 +52,7 @@ See [FEATURES.md](./FEATURES.md) for full tables and dependency graph.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for diagrams and data flows.
 
-Build a **collaboration core** (spaces, session registry, routing, metadata schema, ACL) with a **transport/relay**, **metadata store**, and **runtime adapters** that only translate to/from a **normalized envelope**. **Logical** peer addressing with **physical relay** (on-device or team-owned). **Orchestrator** is a **role** on a normal session plus routing policy—not the only message path. Suggested repo shape: `packages/core`, `protocol`, `relay`, `adapters/*`, `human-app`; **adapters must not import each other**. Recommended build order: **protocol + envelope model** → **core routing/ACL** (in-memory first) → **minimal relay** → **first adapter** → **metadata patches** → **second adapter** → **human surface** → hardening. **Critical path:** protocol → relay → first adapter.
+Build a **collaboration core** (spaces, session registry, routing, metadata schema, ACL) with a **transport/relay**, **metadata store**, and **runtime adapters** that only translate to/from a **normalized envelope**. **Logical** peer addressing with **physical relay** (on-device or team-owned). **Orchestrator** is a **role** on a normal session plus routing policy—not the only message path. Suggested repo shape: `packages/core`, `protocol`, `relay`, `adapters/`*, `human-app`; **adapters must not import each other**. Recommended build order: **protocol + envelope model** → **core routing/ACL** (in-memory first) → **minimal relay** → **first adapter** → **metadata patches** → **second adapter** → **human surface** → hardening. **Critical path:** protocol → relay → first adapter.
 
 **Major components:**
 
@@ -66,7 +66,7 @@ Build a **collaboration core** (spaces, session registry, routing, metadata sche
 
 See [PITFALLS.md](./PITFALLS.md) for full CP list, technical debt patterns, and checklists.
 
-1. **Session vs runtime vs workspace ambiguity** — route on **`session_id` + space membership** only; define lifecycle and fork semantics; never “send to Cursor” as identity.
+1. **Session vs runtime vs workspace ambiguity** — route on `**session_id` + space membership** only; define lifecycle and fork semantics; never “send to Cursor” as identity.
 2. **Protocol without versioning, idempotency, or delivery semantics** — ship a narrow envelope early (`schema_version`, `message_id`, scoped ordering per thread); at-least-once + dedupe; reject unknown versions with upgrade path.
 3. **Control vs conversation vs fat payloads on one channel** — separate control from conversation; cap inline size; references for blobs; optional telemetry separation.
 4. **Orchestrator ambiguity / split brain** — persist `orchestrator_session_id` with atomic handoff; define behavior when orchestrator leaves; UIs read from layer state, not local guesses.
@@ -148,12 +148,14 @@ Suggested phases align PITFALLS “phase buckets” with ARCHITECTURE build orde
 
 ## Confidence Assessment
 
-| Area | Confidence | Notes |
-|------|------------|-------|
-| Stack | **HIGH** (NATS path) | Verified server release, npm pins, Context7/docs; refresh patches before lockfile. |
-| Features | **MEDIUM** | Strong adjacent-industry grounding; sparse direct “multi-IDE agent bridge” comparables—validate with users. |
-| Architecture | **MEDIUM** | Consistent with MCP-style layering and common relay patterns; not validated against shipped agent-talkie. |
-| Pitfalls | **MEDIUM-HIGH** | Messaging/integration patterns are well-trodden; runtime-specific failure modes remain vendor-dependent. |
+
+| Area         | Confidence           | Notes                                                                                                       |
+| ------------ | -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Stack        | **HIGH** (NATS path) | Verified server release, npm pins, Context7/docs; refresh patches before lockfile.                          |
+| Features     | **MEDIUM**           | Strong adjacent-industry grounding; sparse direct “multi-IDE agent bridge” comparables—validate with users. |
+| Architecture | **MEDIUM**           | Consistent with MCP-style layering and common relay patterns; not validated against shipped agent-talkie.   |
+| Pitfalls     | **MEDIUM-HIGH**      | Messaging/integration patterns are well-trodden; runtime-specific failure modes remain vendor-dependent.    |
+
 
 **Overall confidence:** **MEDIUM-HIGH** for engineering direction; **MEDIUM** for product feature prioritization until validated.
 
@@ -183,5 +185,6 @@ Aggregated from research artifacts and their citations. See each file for full b
 - [PITFALLS.md](./PITFALLS.md) — distributed messaging practice; [OneUptime ordering blog](https://oneuptime.com/blog/post/2026-01-24-message-ordering-event-driven/view); [Ably chat architecture](https://ably.com/blog/chat-architecture-reliable-message-ordering); [Fazm handoff bottleneck](https://fazm.ai/blog/agent-handoff-coordination-bottleneck); [Swarm Signal coordination failures](https://swarmsignal.net/multi-agent-coordination-failure-modes-and-mitigation/).
 
 ---
+
 *Research completed: 2026-04-09*  
 *Ready for roadmap: yes*
