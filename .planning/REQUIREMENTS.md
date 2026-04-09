@@ -127,55 +127,55 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROTO-01 | — | Pending |
-| PROTO-02 | — | Pending |
-| PROTO-03 | — | Pending |
-| PROTO-04 | — | Pending |
-| PROTO-05 | — | Pending |
-| PROTO-06 | — | Pending |
-| SESS-01 | — | Pending |
-| SESS-02 | — | Pending |
-| SESS-03 | — | Pending |
-| SESS-04 | — | Pending |
-| RELAY-01 | — | Pending |
-| RELAY-02 | — | Pending |
-| RELAY-03 | — | Pending |
-| RELAY-04 | — | Pending |
-| RELAY-05 | — | Pending |
-| RELAY-06 | — | Pending |
-| RELAY-07 | — | Pending |
-| RELAY-08 | — | Pending |
-| RELAY-09 | — | Pending |
-| SPACE-01 | — | Pending |
-| SPACE-02 | — | Pending |
-| SPACE-03 | — | Pending |
-| SPACE-04 | — | Pending |
-| MSG-01 | — | Pending |
-| MSG-02 | — | Pending |
-| MSG-03 | — | Pending |
-| MSG-04 | — | Pending |
-| MSG-05 | — | Pending |
-| MSG-06 | — | Pending |
-| META-01 | — | Pending |
-| META-02 | — | Pending |
-| META-03 | — | Pending |
-| META-04 | — | Pending |
-| ADAPT-01 | — | Pending |
-| ADAPT-02 | — | Pending |
-| ADAPT-03 | — | Pending |
-| ADAPT-04 | — | Pending |
-| OVER-01 | — | Pending |
-| OVER-02 | — | Pending |
-| OVER-03 | — | Pending |
-| CLI-01 | — | Pending |
-| CLI-02 | — | Pending |
-| CLI-03 | — | Pending |
+| PROTO-01 | 1 | Pending |
+| PROTO-02 | 1 | Pending |
+| PROTO-03 | 1 | Pending |
+| PROTO-04 | 1 | Pending |
+| PROTO-05 | 1 | Pending |
+| PROTO-06 | 1 | Pending |
+| SESS-01 | 1 | Pending |
+| SESS-02 | 1 | Pending |
+| SESS-03 | 1 | Pending |
+| SESS-04 | 1 | Pending |
+| RELAY-01 | 2 | Pending |
+| RELAY-02 | 2 | Pending |
+| RELAY-03 | 2 | Pending |
+| RELAY-04 | 3 | Pending |
+| RELAY-05 | 3 | Pending |
+| RELAY-06 | 3 | Pending |
+| RELAY-07 | 3 | Pending |
+| RELAY-08 | 2 | Pending |
+| RELAY-09 | 2 | Pending |
+| SPACE-01 | 2 | Pending |
+| SPACE-02 | 2 | Pending |
+| SPACE-03 | 2 | Pending |
+| SPACE-04 | 2 | Pending |
+| MSG-01 | 2 | Pending |
+| MSG-02 | 2 | Pending |
+| MSG-03 | 2 | Pending |
+| MSG-04 | 4 | Pending |
+| MSG-05 | 4 | Pending |
+| MSG-06 | 4 | Pending |
+| META-01 | 4 | Pending |
+| META-02 | 4 | Pending |
+| META-03 | 4 | Pending |
+| META-04 | 4 | Pending |
+| ADAPT-01 | 4 | Pending |
+| ADAPT-02 | 5 | Pending |
+| ADAPT-03 | 4 | Pending |
+| ADAPT-04 | 4 | Pending |
+| OVER-01 | 5 | Pending |
+| OVER-02 | 5 | Pending |
+| OVER-03 | 5 | Pending |
+| CLI-01 | 3 | Pending |
+| CLI-02 | 3 | Pending |
+| CLI-03 | 3 | Pending |
 
 **Coverage:**
-- v1 requirements: 42 total
-- Mapped to phases: 0
-- Unmapped: 42
+- v1 requirements: 43 total
+- Mapped to phases: 43
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-10*
-*Last updated: 2026-04-10 after initial definition*
+*Last updated: 2026-04-10 after roadmap traceability*
