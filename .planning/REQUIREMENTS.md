@@ -103,41 +103,41 @@ Deferred to future release. Tracked but not in current roadmap.
 Which phases cover which requirements. Updated during roadmap creation.
 
 
-| Requirement | Phase | Status  |
-| ----------- | ----- | ------- |
+| Requirement | Phase | Status   |
+| ----------- | ----- | -------- |
 | PROTO-01    | 1     | Complete |
 | PROTO-02    | 1     | Complete |
-| PROTO-03    | 1     | Pending |
+| PROTO-03    | 1     | Complete |
 | PROTO-04    | 1     | Complete |
-| SESS-01     | 2     | Pending |
-| SESS-02     | 2     | Pending |
-| SESS-03     | 2     | Pending |
-| SESS-04     | 2     | Pending |
-| SESS-05     | 2     | Pending |
-| SPACE-01    | 2     | Pending |
-| SPACE-02    | 2     | Pending |
-| SPACE-03    | 2     | Pending |
-| SPACE-04    | 2     | Pending |
-| SPACE-05    | 2     | Pending |
-| SPACE-06    | 2     | Pending |
-| MSG-01      | 3     | Pending |
-| MSG-02      | 3     | Pending |
-| MSG-03      | 3     | Pending |
-| MSG-04      | 3     | Pending |
-| MSG-05      | 3     | Pending |
-| ORCH-01     | 3     | Pending |
-| ORCH-02     | 3     | Pending |
-| ORCH-03     | 3     | Pending |
-| ORCH-04     | 3     | Pending |
-| ORCH-05     | 3     | Pending |
-| VIS-01      | 6     | Pending |
-| VIS-02      | 6     | Pending |
-| VIS-03      | 5     | Pending |
-| VIS-04      | 6     | Pending |
-| VIS-05      | 7     | Pending |
-| ADPT-01     | 5     | Pending |
-| ADPT-02     | 4     | Pending |
-| ADPT-03     | 4     | Pending |
+| SESS-01     | 2     | Pending  |
+| SESS-02     | 2     | Pending  |
+| SESS-03     | 2     | Pending  |
+| SESS-04     | 2     | Pending  |
+| SESS-05     | 2     | Pending  |
+| SPACE-01    | 2     | Pending  |
+| SPACE-02    | 2     | Pending  |
+| SPACE-03    | 2     | Pending  |
+| SPACE-04    | 2     | Pending  |
+| SPACE-05    | 2     | Pending  |
+| SPACE-06    | 2     | Pending  |
+| MSG-01      | 3     | Pending  |
+| MSG-02      | 3     | Pending  |
+| MSG-03      | 3     | Pending  |
+| MSG-04      | 3     | Pending  |
+| MSG-05      | 3     | Pending  |
+| ORCH-01     | 3     | Pending  |
+| ORCH-02     | 3     | Pending  |
+| ORCH-03     | 3     | Pending  |
+| ORCH-04     | 3     | Pending  |
+| ORCH-05     | 3     | Pending  |
+| VIS-01      | 6     | Pending  |
+| VIS-02      | 6     | Pending  |
+| VIS-03      | 5     | Pending  |
+| VIS-04      | 6     | Pending  |
+| VIS-05      | 7     | Pending  |
+| ADPT-01     | 5     | Pending  |
+| ADPT-02     | 4     | Pending  |
+| ADPT-03     | 4     | Pending  |
 
 
 **Coverage:**

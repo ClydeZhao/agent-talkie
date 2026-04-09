@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 3. Control traffic (join, leave, metadata updates) is distinguishable from conversation traffic on the wire or in the same documented channel split.
 4. Clients sending an unsupported schema version receive a clear rejection and a documented upgrade path.
 
-**Plans:** 1/3 plans executed (01-02 and 01-03 replanned for relay + SQLite; NATS/Compose plans superseded)
+**Plans:** 2/3 plans executed
 
 Plans:
 
@@ -136,7 +136,7 @@ Phases execute in numeric order: 2 → 2.1 → 2.2 → 3 → 3.1 → 4
 
 | Phase                                      | Plans Complete | Status      | Completed |
 | ------------------------------------------ | -------------- | ----------- | --------- |
-| 1. Protocol & transport foundation         | 1/3            | In Progress | -         |
+| 1. Protocol & transport foundation         | 2/3 | In Progress|  |
 | 2. Session identity, spaces & membership   | 0/TBD          | Not started | -         |
 | 3. Relay, routing & orchestration          | 0/TBD          | Not started | -         |
 | 4. First runtime adapter                   | 0/TBD          | Not started | -         |
