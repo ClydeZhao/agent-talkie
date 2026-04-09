@@ -40,4 +40,10 @@ describe("parseEnvelope", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe(VALIDATION_ERROR_CODE);
   });
+
+  it("rejects thread_id containing a dot with VALIDATION_ERROR", () => {
+    const r = parseEnvelope({ ...base, thread_id: "bad.thread" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe(VALIDATION_ERROR_CODE);
+  });
 });

@@ -10,7 +10,7 @@ export const EnvelopeSchema = z.object({
   schema_version: z.number().int().positive(),
   message_id: z.string().uuid(),
   idempotency_key: z.string().min(1),
-  thread_id: z.string().min(1),
+  thread_id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
   sender_session_id: z.string().min(1),
   space_id: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/),
   type: z.enum(["control", "conversation"]),
