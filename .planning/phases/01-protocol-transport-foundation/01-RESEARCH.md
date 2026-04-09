@@ -155,7 +155,7 @@ z.toJSONSchema(envelope);
 
 ### Pattern 2: Subject builders + stream capture map
 
-**What:** Centralize `talkie.${spaceId}.control.`* and `talkie.${spaceId}.conversation.*` to avoid ad-hoc string concat (injection-style bugs with raw `space_id`). Sanitize or validate `space_id` / `thread_id` for NATS subject token safety.  
+**What:** Centralize `talkie.${spaceId}.control.`* and `talkie.${spaceId}.conversation.`* to avoid ad-hoc string concat (injection-style bugs with raw `space_id`). Sanitize or validate `space_id` / `thread_id` for NATS subject token safety.  
 **When to use:** Any publish/subscribe path.  
 **JetStream:** Create streams whose `subjects` patterns cover `talkie.*.control.>` and `talkie.*.conversation.>` (exact pattern is discretion — may be one or two streams).
 

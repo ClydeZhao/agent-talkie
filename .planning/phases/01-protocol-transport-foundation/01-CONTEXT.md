@@ -4,14 +4,12 @@
 **Status:** Ready for planning
 **Revision note:** Architectural pivot — replaced NATS + Postgres default with zero-external-services, relay-based local-first architecture.
 
-<domain>
 ## Phase Boundary
 
 Establish the versioned, enforceable message contract (envelope schema) and transport semantics that all adapters, the relay, and the collaboration core share as a single source of truth. This phase produces the wire format, transport abstraction layer, and relay protocol — no session management, no routing logic, no adapters yet.
 
-</domain>
 
-<decisions>
+
 ## Implementation Decisions
 
 ### Hard Constraints (architectural pivot)
@@ -46,9 +44,8 @@ Establish the versioned, enforceable message contract (envelope schema) and tran
 - SQLite schema for metadata (Drizzle vs raw SQL)
 - Test harness and conformance tooling approach
 
-</decisions>
 
-<canonical_refs>
+
 ## Canonical References
 
 **Downstream agents MUST read these before planning or implementing.**
@@ -71,9 +68,8 @@ Establish the versioned, enforceable message contract (envelope schema) and tran
 
 - `.planning/research/STACK.md` — NATS/Postgres stack. No longer normative for default mode. May inform optional NATS transport plugin in future phases.
 
-</canonical_refs>
 
-<code_context>
+
 ## Existing Code Insights
 
 ### Reusable Assets (from Plan 01-01, already executed)
@@ -85,7 +81,7 @@ Establish the versioned, enforceable message contract (envelope schema) and tran
 
 ### Established Patterns
 
-- Monorepo with `packages/*` workspaces
+- Monorepo with `packages/`* workspaces
 - Zod for validation, Vitest for testing
 - snake_case JSON keys in envelope
 
@@ -99,17 +95,15 @@ Establish the versioned, enforceable message contract (envelope schema) and tran
 - `01-02-PLAN.md` — NATS subject builders → replace with relay topic routing / envelope-based dispatch
 - `01-03-PLAN.md` — Docker Compose NATS/Postgres + JetStream dedup → replace with embedded relay + SQLite verification
 
-</code_context>
 
-<specifics>
+
 ## Specific Ideas
 
 - Transport abstraction must be a clean interface (e.g. `TalkieTransport`) with relay-WebSocket as default implementation and NATS as an optional alternative — but this is an interface design question for research/planning, not a locked specific.
 - The relay daemon pattern should feel invisible: the user runs their session, the relay starts automatically if needed, and shuts down when no one is connected.
 
-</specifics>
 
-<deferred>
+
 ## Deferred Ideas
 
 - NATS transport plugin (optional team/remote mode) — future phase or backlog
@@ -117,7 +111,7 @@ Establish the versioned, enforceable message contract (envelope schema) and tran
 - Relay clustering / horizontal scaling — Phase 7 (hardening)
 - Binary protocol (protobuf) — only if JSON proves insufficient
 
-</deferred>
+
 
 ---
 
