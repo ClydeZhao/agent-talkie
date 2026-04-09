@@ -102,45 +102,45 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROTO-01 | — | Pending |
-| PROTO-02 | — | Pending |
-| PROTO-03 | — | Pending |
-| PROTO-04 | — | Pending |
-| SESS-01 | — | Pending |
-| SESS-02 | — | Pending |
-| SESS-03 | — | Pending |
-| SESS-04 | — | Pending |
-| SESS-05 | — | Pending |
-| SPACE-01 | — | Pending |
-| SPACE-02 | — | Pending |
-| SPACE-03 | — | Pending |
-| SPACE-04 | — | Pending |
-| SPACE-05 | — | Pending |
-| SPACE-06 | — | Pending |
-| MSG-01 | — | Pending |
-| MSG-02 | — | Pending |
-| MSG-03 | — | Pending |
-| MSG-04 | — | Pending |
-| MSG-05 | — | Pending |
-| ORCH-01 | — | Pending |
-| ORCH-02 | — | Pending |
-| ORCH-03 | — | Pending |
-| ORCH-04 | — | Pending |
-| ORCH-05 | — | Pending |
-| VIS-01 | — | Pending |
-| VIS-02 | — | Pending |
-| VIS-03 | — | Pending |
-| VIS-04 | — | Pending |
-| VIS-05 | — | Pending |
-| ADPT-01 | — | Pending |
-| ADPT-02 | — | Pending |
-| ADPT-03 | — | Pending |
+| PROTO-01 | 1 | Pending |
+| PROTO-02 | 1 | Pending |
+| PROTO-03 | 1 | Pending |
+| PROTO-04 | 1 | Pending |
+| SESS-01 | 2 | Pending |
+| SESS-02 | 2 | Pending |
+| SESS-03 | 2 | Pending |
+| SESS-04 | 2 | Pending |
+| SESS-05 | 2 | Pending |
+| SPACE-01 | 2 | Pending |
+| SPACE-02 | 2 | Pending |
+| SPACE-03 | 2 | Pending |
+| SPACE-04 | 2 | Pending |
+| SPACE-05 | 2 | Pending |
+| SPACE-06 | 2 | Pending |
+| MSG-01 | 3 | Pending |
+| MSG-02 | 3 | Pending |
+| MSG-03 | 3 | Pending |
+| MSG-04 | 3 | Pending |
+| MSG-05 | 3 | Pending |
+| ORCH-01 | 3 | Pending |
+| ORCH-02 | 3 | Pending |
+| ORCH-03 | 3 | Pending |
+| ORCH-04 | 3 | Pending |
+| ORCH-05 | 3 | Pending |
+| VIS-01 | 6 | Pending |
+| VIS-02 | 6 | Pending |
+| VIS-03 | 5 | Pending |
+| VIS-04 | 6 | Pending |
+| VIS-05 | 7 | Pending |
+| ADPT-01 | 5 | Pending |
+| ADPT-02 | 4 | Pending |
+| ADPT-03 | 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 33 total
-- Mapped to phases: 0
-- Unmapped: 33
+- Mapped to phases: 33
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-09*
-*Last updated: 2026-04-09 after initial definition*
+*Last updated: 2026-04-09 after roadmap creation*
