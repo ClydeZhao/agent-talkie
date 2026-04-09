@@ -1,0 +1,181 @@
+# Requirements: agent-talkie
+
+**Defined:** 2026-04-10
+**Core Value:** Sessions from different runtimes can collaborate directly through a shared channel without the human acting as copy-paste middleware.
+
+## v1 Requirements
+
+Requirements for initial release. Each maps to roadmap phases.
+
+### Protocol
+
+- [ ] **PROTO-01**: Versioned message envelope with explicit wire version field validated by Zod at runtime
+- [ ] **PROTO-02**: JSON Schema export generated from Zod schemas for non-TypeScript consumers
+- [ ] **PROTO-03**: Idempotency keys on protocol operations that produce side effects, enabling safe retries on reconnect
+- [ ] **PROTO-04**: Message sequence numbers per session for ordering and gap detection
+- [ ] **PROTO-05**: Control messages and conversation messages distinguished as protocol-level semantics within the same envelope
+- [ ] **PROTO-06**: Schema evolution strategy with version negotiation during handshake
+
+### Session Identity
+
+- [ ] **SESS-01**: Each session has a stable unique identity that survives reconnects and relay restarts
+- [ ] **SESS-02**: Sessions have human-usable display names with automatic disambiguation when collisions exist
+- [ ] **SESS-03**: Sessions expose minimal workspace context (runtime type, workspace label, branch, current focus) without revealing full local paths
+- [ ] **SESS-04**: Session identity persists in SQLite and is recoverable after adapter or relay restart
+
+### Relay & Transport
+
+- [ ] **RELAY-01**: WebSocket relay server accepts connections, validates envelopes, and routes messages to addressed recipients
+- [ ] **RELAY-02**: Relay performs authoritative Zod validation on all inbound envelopes before routing
+- [ ] **RELAY-03**: Messages are routed by explicit session addressing, not broadcast to all connected sessions
+- [ ] **RELAY-04**: Relay daemon auto-spawns on first use when no relay is running locally
+- [ ] **RELAY-05**: Relay daemon lifecycle is independent of any participant — relay survives session disconnects and reconnects
+- [ ] **RELAY-06**: Single-instance relay enforcement via lockfile with generation tokens for stale lock detection
+- [ ] **RELAY-07**: Relay idle shutdown when no connections remain and no pending protocol state exists
+- [ ] **RELAY-08**: SQLite-backed durable state for spaces, memberships, session registry, and transcript pointers (WAL mode, busy_timeout)
+- [ ] **RELAY-09**: Graceful disconnect handling — session departure does not corrupt relay state or other sessions
+
+### Collaboration Space
+
+- [ ] **SPACE-01**: Sessions can create, join, and leave a collaboration space (channel)
+- [ ] **SPACE-02**: A session can belong to at most one channel at a time (v1 simplification)
+- [ ] **SPACE-03**: Channel membership is persisted in SQLite and survives relay restarts
+- [ ] **SPACE-04**: Participation requires explicit opt-in (join action or invitation) — network presence alone never grants membership
+
+### Messaging
+
+- [ ] **MSG-01**: Sessions can send messages directly to another session in the same channel
+- [ ] **MSG-02**: Sessions can send messages addressed to all sessions in the channel (broadcast within channel)
+- [ ] **MSG-03**: Multi-turn conversations are supported — sessions can continue back-and-forth exchanges, not just one-shot dispatch
+- [ ] **MSG-04**: Human messages to the channel route to the orchestrator session by default
+- [ ] **MSG-05**: Human can address a specific session directly, bypassing orchestrator default
+- [ ] **MSG-06**: Orchestrator can assign work to sessions, follow up on progress, and consolidate questions for the human
+
+### Collaboration Metadata
+
+- [ ] **META-01**: Each session has layer-owned collaboration metadata: role, focus, progress status, and blocked state
+- [ ] **META-02**: Metadata is visible to other sessions in the same channel and to observing humans
+- [ ] **META-03**: Status-like fields (activity, blocked state, last update) can refresh automatically; semantic fields (role, display name, focus) are human-controlled
+- [ ] **META-04**: Metadata updates are propagated to channel participants via the relay
+
+### Adapters
+
+- [ ] **ADAPT-01**: Adapter ingress pattern defined — adapters translate runtime-native I/O into valid protocol envelopes sent to the relay via WebSocket
+- [ ] **ADAPT-02**: At least two runtime adapters implemented to prove cross-runtime collaboration (exact runtimes are implementation choices)
+- [ ] **ADAPT-03**: Adapters are edge concerns — they connect to the relay using the same session client and WebSocket protocol as any other consumer
+- [ ] **ADAPT-04**: Stdio-based adapter with framed messages, bounded queues, and clear overload errors for runtimes that communicate via stdin/stdout
+
+### Human Oversight
+
+- [ ] **OVER-01**: Human-visible surface showing who is participating, what each session is doing, and what needs attention
+- [ ] **OVER-02**: Native interruptions (permission prompts, auth, destructive confirmations) stay in the native client — the collaboration layer surfaces which session is blocked and why, without replacing native UX
+- [ ] **OVER-03**: Human can observe the collaboration timeline without automatically injecting all messages as context into every session
+
+### CLI & Packaging
+
+- [ ] **CLI-01**: Product is installable via `npm install` or runnable via `npx` without separately installing infrastructure
+- [ ] **CLI-02**: CLI entrypoints for relay management (start, stop, status) and session operations
+- [ ] **CLI-03**: Relay auto-start is transparent — the user does not need to manually manage daemon lifecycle for basic local use
+
+## v2 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Trust & Remote
+
+- **TRUST-01**: Token/TLS/tunnel authentication story for non-loopback relay connections
+- **TRUST-02**: Invite-based channel membership for cross-machine collaboration
+- **TRUST-03**: Loopback-only binding by default; non-loopback requires explicit trust configuration
+
+### Multi-Human
+
+- **MHUM-01**: Multiple humans can participate in the same collaboration space, each bringing their own local agent sessions
+- **MHUM-02**: Cross-user invitation and approval flow for joining collaboration spaces
+
+### Advanced Orchestration
+
+- **ORCH-01**: Proactive orchestrator follow-ups — orchestrator autonomously checks stalled threads and drives momentum
+- **ORCH-02**: Orchestrator failover — when orchestrator session disconnects, recovery or reassignment mechanism
+
+### Extended UX
+
+- **UX-01**: Session finder / "ring my terminal" — locate a session from the web UI and highlight its hosting terminal
+- **UX-02**: Web-based collaboration dashboard with richer oversight than CLI
+- **UX-03**: Multi-channel per session — a session can participate in multiple channels simultaneously
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| NATS, Kafka, or external message bus as default | Zero-external-services constraint — SQLite + WebSocket relay is the default path |
+| Postgres or external database as default | SQLite is sufficient for local-first; external DB is an optional extension, not default |
+| Hosted autonomous execution / agent sandboxes | Product connects existing sessions, does not host or execute them |
+| Full workspace sync or repo mirroring | Local context stays local unless deliberately shared — security and scope |
+| Centralized long-term memory platform | Violates local-first trust model; not the product's problem |
+| Git conflict resolution / worktree management | Belongs to development workflows, not the collaboration layer |
+| Replacing native runtime approval / auth / prompt UX | Wrong trust boundary — native interruptions stay native |
+| General-purpose agent harness framework | Keep boundary narrow — messages + metadata, not a LangGraph competitor |
+| Firebase or proprietary realtime databases | Vendor lock-in; conflicts with zero-external-services default |
+| Ambient discovery = membership | Explicit participation only — presence on network never grants access |
+| Solo/local/team mode-switching UX | Artificial modes; collaboration extends naturally via invite and join |
+| Runtime brand as identity | Sessions are the unit, not runtime brands |
+| JSON/Markdown as sole source of truth | SQLite is durable store; JSON/JSONL for export/debug only |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| PROTO-01 | — | Pending |
+| PROTO-02 | — | Pending |
+| PROTO-03 | — | Pending |
+| PROTO-04 | — | Pending |
+| PROTO-05 | — | Pending |
+| PROTO-06 | — | Pending |
+| SESS-01 | — | Pending |
+| SESS-02 | — | Pending |
+| SESS-03 | — | Pending |
+| SESS-04 | — | Pending |
+| RELAY-01 | — | Pending |
+| RELAY-02 | — | Pending |
+| RELAY-03 | — | Pending |
+| RELAY-04 | — | Pending |
+| RELAY-05 | — | Pending |
+| RELAY-06 | — | Pending |
+| RELAY-07 | — | Pending |
+| RELAY-08 | — | Pending |
+| RELAY-09 | — | Pending |
+| SPACE-01 | — | Pending |
+| SPACE-02 | — | Pending |
+| SPACE-03 | — | Pending |
+| SPACE-04 | — | Pending |
+| MSG-01 | — | Pending |
+| MSG-02 | — | Pending |
+| MSG-03 | — | Pending |
+| MSG-04 | — | Pending |
+| MSG-05 | — | Pending |
+| MSG-06 | — | Pending |
+| META-01 | — | Pending |
+| META-02 | — | Pending |
+| META-03 | — | Pending |
+| META-04 | — | Pending |
+| ADAPT-01 | — | Pending |
+| ADAPT-02 | — | Pending |
+| ADAPT-03 | — | Pending |
+| ADAPT-04 | — | Pending |
+| OVER-01 | — | Pending |
+| OVER-02 | — | Pending |
+| OVER-03 | — | Pending |
+| CLI-01 | — | Pending |
+| CLI-02 | — | Pending |
+| CLI-03 | — | Pending |
+
+**Coverage:**
+- v1 requirements: 42 total
+- Mapped to phases: 0
+- Unmapped: 42
+
+---
+*Requirements defined: 2026-04-10*
+*Last updated: 2026-04-10 after initial definition*
