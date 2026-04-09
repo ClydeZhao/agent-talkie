@@ -34,6 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 2. Duplicate submissions with the same idempotency key do not create duplicate logical effects in the collaboration layer.
 3. Control traffic (join, leave, metadata updates) is distinguishable from conversation traffic on the wire or in the same documented channel split.
 4. Clients sending an unsupported schema version receive a clear rejection and a documented upgrade path.
+
 **Plans:** 3 plans
 
 Plans:
