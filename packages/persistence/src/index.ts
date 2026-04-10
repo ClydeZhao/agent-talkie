@@ -1,2 +1,2 @@
-// Populated in task 2 (openDatabase, migrate).
-export {};
+export { openDatabase } from "./db.js";
+export { migrate } from "./migrate.js";
