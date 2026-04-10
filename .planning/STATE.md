@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-04-10T02:44:59.457Z"
+status: verifying
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-04-10T02:52:15.096Z"
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 | Phase | Name | Status | Progress |
 |-------|------|--------|----------|
-| 1 | Protocol & persistence foundation | In progress | 75% |
+| 1 | Protocol & persistence foundation | In progress | 100% |
 | 2 | Relay — WebSocket, validate, route | Pending | 0% |
 | 3 | Supervisor & daemon lifecycle | Pending | 0% |
 | 4 | Collaboration semantics, metadata & adapter edge | Pending | 0% |
@@ -37,11 +37,11 @@ See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Phase 1: Protocol & persistence foundation**
 
-**Plan:** 4 of 4 in current phase
+**Plan:** 4 of 4 in current phase (all plans summarized)
 
-Status: Ready to execute
+Status: Phase complete — ready for verification
 
-Plans: 3/4 complete — last finished `01-03-PLAN.md` (see `01-03-SUMMARY.md`). Next: `01-04-PLAN.md`.
+Plans: 4/4 complete — last finished `01-04-PLAN.md` (see `01-04-SUMMARY.md`).
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Plans: 3/4 complete — last finished `01-03-PLAN.md` (see `01-03-SUMMARY.md`). 
 | Phase 01-protocol-persistence-foundation P01 | 5min | 3 tasks | 10 files |
 | Phase 01-protocol-persistence-foundation P02 | 12 min | 3 tasks | 8 files |
 | Phase 01-protocol-persistence-foundation P03 | 12min | 3 tasks | 11 files |
+| Phase 01-protocol-persistence-foundation P04 | 18 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -60,6 +61,8 @@ Plans: 3/4 complete — last finished `01-03-PLAN.md` (see `01-03-SUMMARY.md`). 
 - [Phase 1]: version_mismatch handshake failures carry relay supportedVersions plus message for client-visible rejection (buildVersionMismatchFailure). — Implements D-10 structured rejection without putting secrets in the payload.
 - [Phase 01-protocol-persistence-foundation]: Ship @agent-talkie/persistence as ESM-only: tsup CJS left import.meta empty and broke migrations path resolution.
 - [Phase 01-protocol-persistence-foundation]: migrate() treats missing schema_version table as unapplied so 001_initial can create the ledger before version checks.
+- [Phase 1]: Persistence session rows use UUID v7 (uuid package) with optional createSession opts.id for tests; display names disambiguated with -1, -2 suffixes per D-05.
+- [Phase 1]: Idempotency tryRecordIdempotencyKey uses INSERT OR IGNORE; pruneExpiredIdempotencyKeys defaults windowMs to 300_000 (D-12 five-minute window).
 
 ### Pending Todos
 
@@ -71,10 +74,10 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-10T02:44:59.454Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-04-10T02:52:15.093Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
 
 ---
 
-*Last updated: 2026-04-10 after 01-03 plan execution*
+*Last updated: 2026-04-10 after 01-04 plan execution*

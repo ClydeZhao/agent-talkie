@@ -18,10 +18,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Session Identity
 
-- [ ] **SESS-01**: Each session has a stable unique identity that survives reconnects and relay restarts
-- [ ] **SESS-02**: Sessions have human-usable display names with automatic disambiguation when collisions exist
-- [ ] **SESS-03**: Sessions expose minimal workspace context (runtime type, workspace label, branch, current focus) without revealing full local paths
-- [ ] **SESS-04**: Session identity persists in SQLite and is recoverable after adapter or relay restart
+- [x] **SESS-01**: Each session has a stable unique identity that survives reconnects and relay restarts
+- [x] **SESS-02**: Sessions have human-usable display names with automatic disambiguation when collisions exist
+- [x] **SESS-03**: Sessions expose minimal workspace context (runtime type, workspace label, branch, current focus) without revealing full local paths
+- [x] **SESS-04**: Session identity persists in SQLite and is recoverable after adapter or relay restart
 
 ### Relay & Transport
 
@@ -136,10 +136,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROTO-04 | 1 | Complete |
 | PROTO-05 | 1 | Complete |
 | PROTO-06 | 1 | Complete |
-| SESS-01 | 1 | Pending |
-| SESS-02 | 1 | Pending |
-| SESS-03 | 1 | Pending |
-| SESS-04 | 1 | Pending |
+| SESS-01 | 1 | Complete |
+| SESS-02 | 1 | Complete |
+| SESS-03 | 1 | Complete |
+| SESS-04 | 1 | Complete |
 | RELAY-01 | 2 | Pending |
 | RELAY-02 | 2 | Pending |
 | RELAY-03 | 2 | Pending |
