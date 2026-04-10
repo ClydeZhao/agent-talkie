@@ -224,3 +224,16 @@ export function isSpaceJoinEnvelope(envelope: Envelope): boolean {
 export function isSpaceLeaveEnvelope(envelope: Envelope): boolean {
   return envelope.kind === "control" && envelope.type === "space.leave";
 }
+
+/** Periodic GC: remove archived spaces past expiry (memberships/transcript CASCADE). */
+export function pruneExpiredArchivedSpaces(
+  db: Database.Database,
+  nowMs: number,
+): void {
+  db.prepare(
+    `DELETE FROM spaces
+     WHERE status = 'archived'
+       AND expires_at IS NOT NULL
+       AND expires_at <= ?`,
+  ).run(nowMs);
+}

@@ -77,8 +77,25 @@ describe("createRelayServer", () => {
         id: randomUUID(),
         sessionId: reg.sessionId,
         kind: "control",
+        type: "space.join",
+        payload: { slug: "vitest-space" },
+        idempotencyKey: randomUUID(),
+      }),
+    );
+    const joined = (await nextJson(ws)) as { type?: string; spaceId?: string };
+    expect(joined.type).toBe("space.joined");
+    const spaceId = joined.spaceId;
+    expect(spaceId).toBeTruthy();
+
+    ws.send(
+      JSON.stringify({
+        version: 1,
+        id: randomUUID(),
+        sessionId: reg.sessionId,
+        kind: "control",
         type: "test.ping",
         payload: {},
+        spaceId,
       }),
     );
     await new Promise((r) => setTimeout(r, 100));

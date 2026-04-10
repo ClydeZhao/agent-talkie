@@ -61,3 +61,27 @@ export function listTranscriptTailBySeq(
     .map((r) => ({ relaySeq: r.relay_seq, envelopeJson: r.envelope_json }))
     .reverse();
 }
+
+/** Ordered ascending by relay_seq for catch-up / query windows. */
+export function listTranscriptEntriesAfterSeq(
+  db: Database.Database,
+  args: { spaceId: string; afterSeq: number; limit: number },
+): Array<{ relaySeq: number; envelopeJson: string }> {
+  const rows = db
+    .prepare(
+      `SELECT relay_seq, envelope_json
+       FROM transcript_entries
+       WHERE space_id = ? AND relay_seq > ?
+       ORDER BY relay_seq ASC
+       LIMIT ?`,
+    )
+    .all(args.spaceId, args.afterSeq, args.limit) as Array<{
+    relay_seq: number;
+    envelope_json: string;
+  }>;
+
+  return rows.map((r) => ({
+    relaySeq: r.relay_seq,
+    envelopeJson: r.envelope_json,
+  }));
+}

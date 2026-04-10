@@ -27,6 +27,7 @@ export {
 } from "./repositories/spaces.js";
 export {
   appendTranscriptEntry,
+  listTranscriptEntriesAfterSeq,
   listTranscriptTailBySeq,
   nextRelaySeq,
 } from "./repositories/transcript.js";

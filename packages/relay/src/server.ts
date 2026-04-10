@@ -21,12 +21,14 @@ import type { RawData } from "ws";
 import { WebSocketServer, type WebSocket } from "ws";
 import { sendTranscriptCatchUp } from "./catch-up.js";
 import { hashReconnectSecret, verifyReconnectSecret } from "./reconnect-secret.js";
+import { routeEnvelope } from "./router.js";
 import { SessionRegistry } from "./session-registry.js";
 import {
   handleSpaceJoin,
   handleSpaceLeave,
   isSpaceJoinEnvelope,
   isSpaceLeaveEnvelope,
+  pruneExpiredArchivedSpaces,
 } from "./space-lifecycle.js";
 import { parseAndValidateEnvelope } from "./validation.js";
 
@@ -117,7 +119,12 @@ export function dispatchValidatedEnvelope(
     return;
   }
 
-  // Routed envelopes: plan 02-03 Task 2 (router).
+  routeEnvelope({
+    db: ctx.db,
+    envelope,
+    senderWs: ctx.ws,
+    getSocketForSession: (sid) => ctx.registry.get(sid),
+  });
 }
 
 type ConnState = {
@@ -184,6 +191,14 @@ export async function createRelayServer(opts: {
 
   const server = http.createServer();
   const wss = new WebSocketServer({ server });
+
+  const spaceGcInterval = setInterval(() => {
+    try {
+      pruneExpiredArchivedSpaces(db, Date.now());
+    } catch {
+      /* ignore */
+    }
+  }, 60000);
 
   const handleMessage = (ws: WebSocket, data: RawData, isBinary: boolean) => {
     const state = connStates.get(ws);
@@ -417,6 +432,7 @@ export async function createRelayServer(opts: {
     url: `ws://${LISTEN_HOST}:${actualPort}`,
     close: () =>
       new Promise((resolve, reject) => {
+        clearInterval(spaceGcInterval);
         for (const client of wss.clients) {
           client.terminate();
         }
