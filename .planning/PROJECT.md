@@ -12,11 +12,12 @@ Sessions from different runtimes can collaborate directly through a shared space
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] Versioned message envelope with Zod validation and JSON Schema export — Validated in Phase 1
+- [x] Idempotency where the protocol requires it — Validated in Phase 1
+- [x] Named sessions with stable identity join a shared collaboration space — Identity model validated in Phase 1 (joining space deferred to Phase 2)
 
 ### Active
 
-- [ ] Named sessions with stable identity join a shared collaboration space
 - [ ] Direct session-to-session messaging across runtimes via relay
 - [ ] Orchestrator role that coordinates work, follows up, and escalates to humans
 - [ ] Multi-turn conversations, not just one-shot dispatch
@@ -29,8 +30,6 @@ Sessions from different runtimes can collaborate directly through a shared space
 - [ ] WebSocket-based relay as canonical core transport
 - [ ] SQLite-backed collaboration metadata and state
 - [ ] Automatic local relay daemon lifecycle
-- [ ] Versioned message envelope with Zod validation and JSON Schema export
-- [ ] Idempotency where the protocol requires it
 - [ ] Adapter ingress patterns for connecting native runtimes
 
 ### Out of Scope
@@ -73,12 +72,12 @@ The default architecture is relay-based, local-first, zero-external-services. Th
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | WebSocket relay as canonical transport | Unifies local and remote under one protocol; avoids divergent transport semantics | — Pending |
-| SQLite for collaboration metadata | Zero-external-services constraint; sufficient for local-first with natural extension | — Pending |
+| SQLite for collaboration metadata | Zero-external-services constraint; sufficient for local-first with natural extension | Foundation validated in Phase 1 (DDL + session/idempotency repos) |
 | Zero external services as default | Product must feel lightweight and immediate; no infrastructure prerequisites | — Pending |
 | One session per space (v1) | Simplify initial implementation; multi-space deferred | — Pending |
 | Relay daemon lifecycle independent of participants | First session must not be permanent host; relay must survive participant churn | — Pending |
 | Adapter ingress separate from core transport | Runtime-specific adapters (stdio bridge) are edge concerns, not core architecture | — Pending |
-| Versioned envelope with Zod + JSON Schema | Type safety for TypeScript consumers; JSON Schema export for non-TS consumers; schema evolution built in | — Pending |
+| Versioned envelope with Zod + JSON Schema | Type safety for TypeScript consumers; JSON Schema export for non-TS consumers; schema evolution built in | Validated in Phase 1 |
 
 ## Evolution
 
@@ -98,4 +97,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-10 after initialization*
+*Last updated: 2026-04-10 after Phase 1 completion*
