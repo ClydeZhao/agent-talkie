@@ -4,4 +4,5 @@ export {
   formatEnvelopeIssues,
   parseEnvelope,
   safeParseEnvelope,
+  type SafeParseEnvelopeResult,
 } from "./envelope.js";
