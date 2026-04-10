@@ -161,3 +161,28 @@ export function countActiveMembers(
     .get(spaceId) as { n: number };
   return row.n;
 }
+
+/** Active membership for a session (at most one in v1). */
+export function findActiveMembershipForSession(
+  db: Database.Database,
+  sessionId: string,
+): { spaceId: string; slug: string } | undefined {
+  const row = db
+    .prepare(
+      `SELECT s.id AS space_id, s.slug AS slug
+       FROM space_memberships m
+       JOIN spaces s ON s.id = m.space_id
+       WHERE m.session_id = ? AND m.left_at IS NULL
+       LIMIT 1`,
+    )
+    .get(sessionId) as { space_id: string; slug: string } | undefined;
+  if (!row) {
+    return undefined;
+  }
+  return { spaceId: row.space_id, slug: row.slug };
+}
+
+/** Removes space row; FK CASCADE deletes memberships and transcript rows. */
+export function deleteSpaceById(db: Database.Database, spaceId: string): void {
+  db.prepare(`DELETE FROM spaces WHERE id = ?`).run(spaceId);
+}

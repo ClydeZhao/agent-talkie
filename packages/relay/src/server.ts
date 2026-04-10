@@ -10,11 +10,24 @@ import {
   type Envelope,
   type SupportedVersions,
 } from "@agent-talkie/protocol";
-import { createSession, migrate, openDatabase } from "@agent-talkie/persistence";
+import {
+  createSession,
+  findActiveMembershipForSession,
+  migrate,
+  openDatabase,
+} from "@agent-talkie/persistence";
+import type Database from "better-sqlite3";
 import type { RawData } from "ws";
 import { WebSocketServer, type WebSocket } from "ws";
+import { sendTranscriptCatchUp } from "./catch-up.js";
 import { hashReconnectSecret, verifyReconnectSecret } from "./reconnect-secret.js";
 import { SessionRegistry } from "./session-registry.js";
+import {
+  handleSpaceJoin,
+  handleSpaceLeave,
+  isSpaceJoinEnvelope,
+  isSpaceLeaveEnvelope,
+} from "./space-lifecycle.js";
 import { parseAndValidateEnvelope } from "./validation.js";
 
 /** Post-bind frames: JSON → {@link parseAndValidateEnvelope} (wraps `safeParseEnvelope`). */
@@ -33,11 +46,78 @@ export type RelayWsContext = {
   negotiatedVersion: number;
 };
 
+export type RelayDispatchContext = RelayWsContext & {
+  db: Database.Database;
+  registry: SessionRegistry;
+};
+
 export function dispatchValidatedEnvelope(
-  _ctx: RelayWsContext,
-  _envelope: Envelope,
+  ctx: RelayDispatchContext,
+  envelope: Envelope,
 ): void {
-  // Routing and persistence writes land in plan 02-03.
+  if (isSpaceJoinEnvelope(envelope)) {
+    const idempotencyKey = envelope.idempotencyKey;
+    if (!idempotencyKey) {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const slug = envelope.payload.slug;
+    if (typeof slug !== "string") {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const out = handleSpaceJoin(ctx.db, {
+      sessionId: ctx.boundSessionId,
+      idempotencyKey,
+      slugRaw: slug,
+      nowMs: Date.now(),
+    });
+    if (out.kind === "error") {
+      sendJson(ctx.ws, { type: "protocol.error", error: out.error });
+      if (out.closeConnection) {
+        ctx.ws.close();
+      }
+      return;
+    }
+    sendJson(ctx.ws, {
+      type: "space.joined",
+      spaceId: out.spaceId,
+      slug: out.slug,
+    });
+    void sendTranscriptCatchUp({
+      db: ctx.db,
+      ws: ctx.ws,
+      spaceId: out.spaceId,
+    });
+    return;
+  }
+
+  if (isSpaceLeaveEnvelope(envelope)) {
+    const idempotencyKey = envelope.idempotencyKey;
+    if (!idempotencyKey) {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const out = handleSpaceLeave(ctx.db, {
+      sessionId: ctx.boundSessionId,
+      idempotencyKey,
+      nowMs: Date.now(),
+    });
+    if (out.kind === "error") {
+      sendJson(ctx.ws, { type: "protocol.error", error: out.error });
+      if (out.closeConnection) {
+        ctx.ws.close();
+      }
+      return;
+    }
+    sendJson(ctx.ws, {
+      type: "space.left",
+      spaceId: out.spaceId,
+    });
+    return;
+  }
+
+  // Routed envelopes: plan 02-03 Task 2 (router).
 }
 
 type ConnState = {
@@ -247,6 +327,14 @@ export async function createRelayServer(opts: {
           type: "session.resumed",
           sessionId: res.data.sessionId,
         });
+        const mem = findActiveMembershipForSession(db, res.data.sessionId);
+        if (mem) {
+          void sendTranscriptCatchUp({
+            db,
+            ws,
+            spaceId: mem.spaceId,
+          });
+        }
         return;
       }
       sendJson(ws, {
@@ -287,6 +375,8 @@ export async function createRelayServer(opts: {
         ws,
         boundSessionId: state.boundSessionId,
         negotiatedVersion: state.negotiatedVersion,
+        db,
+        registry,
       },
       envelope,
     );

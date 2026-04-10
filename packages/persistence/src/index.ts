@@ -14,6 +14,8 @@ export {
 export {
   clearMembershipLeftAt,
   countActiveMembers,
+  deleteSpaceById,
+  findActiveMembershipForSession,
   getSpaceBySlug,
   insertMembership,
   insertSpaceWithSlug,

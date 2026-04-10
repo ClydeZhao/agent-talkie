@@ -14,7 +14,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsup",
-    "pretest": "npm run build -w @agent-talkie/protocol",
+    "pretest": "npm run build -w @agent-talkie/protocol && npm run build -w @agent-talkie/persistence",
     "test": "vitest run"
   },
   "dependencies": {
