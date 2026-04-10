@@ -11,3 +11,15 @@ export {
   pruneExpiredIdempotencyKeys,
   tryRecordIdempotencyKey,
 } from "./repositories/idempotency.js";
+export {
+  clearMembershipLeftAt,
+  countActiveMembers,
+  getSpaceBySlug,
+  insertMembership,
+  insertSpaceWithSlug,
+  markMembershipLeft,
+  normalizeSpaceSlug,
+  reviveSpaceFromArchived,
+  setSpaceArchived,
+  type SpaceStatus,
+} from "./repositories/spaces.js";
