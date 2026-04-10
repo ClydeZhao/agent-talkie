@@ -47,11 +47,11 @@ See [FEATURES.md](./FEATURES.md) for the full landscape, MVP slice, and competit
 
 - **Session-as-unit across vendor runtimes**; **local-first zero external services**; **conversation-first** semantics vs DAG-only orchestrators.
 - **Orchestrator + direct peer mesh**; **narrow core** (messages + metadata; rich artifacts via harnesses later).
-- **Same protocol local and remote**; **v1 one-channel discipline** for speed and clarity.
+- **Same protocol local and remote**; **v1 one-space discipline** for speed and clarity.
 
 **Defer (v2+):**
 
-- Polished multi-human invitation UX, deep proactive orchestrator automation, rich core artifact exchange, session finder / Web UI (PROJECT.md “idea for later”), multi-channel per session.
+- Polished multi-human invitation UX, deep proactive orchestrator automation, rich core artifact exchange, session finder / Web UI (PROJECT.md “idea for later”), multi-space per session.
 
 ### Architecture Approach
 
@@ -180,7 +180,7 @@ Phases with **relatively standard patterns** (lighter research):
 
 ### Primary (HIGH confidence for project alignment)
 
-- [.planning/PROJECT.md](../PROJECT.md) — Requirements, constraints, simplifications (one channel v1), key decisions.
+- [.planning/PROJECT.md](../PROJECT.md) — Requirements, constraints, simplifications (one space v1), key decisions.
 - [PRD.md](../../PRD.md) (cited in research) — Session-first principles, orchestrator, non-goals.
 - [ARCHITECTURE-CONSTRAINTS.md](../../ARCHITECTURE-CONSTRAINTS.md) (cited in research) — Hard constraints, default architecture.
 - [STACK.md](./STACK.md), [FEATURES.md](./FEATURES.md), [ARCHITECTURE.md](./ARCHITECTURE.md), [PITFALLS.md](./PITFALLS.md) — This synthesis.

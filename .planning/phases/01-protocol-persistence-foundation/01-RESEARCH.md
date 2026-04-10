@@ -13,7 +13,7 @@
 
 - **D-01:** Flat top-level envelope — `version` (integer), `id` (message UUID), `sessionId` (sender), `kind` (`control` | `conversation`), `type` (string), `payload` (object), optional `idempotencyKey`, optional `seq`. No deep nesting of envelope metadata.
 - **D-02:** `kind` distinguishes control vs conversation; same envelope shape for both.
-- **D-03:** Addressing fields (`to` for direct session, or channel-scoped broadcast) are part of the envelope, not buried in payload.
+- **D-03:** Addressing fields (`to` for direct session, or space-scoped delivery) are part of the envelope, not buried in payload.
 
 **Session identity**
 
@@ -142,7 +142,7 @@ packages/
 
 ### Envelope schema (flat object, JSON-Schema-friendly)
 
-- **Base fields:** `version`, `id`, `sessionId`, `kind`, `type`, `payload`, optional `idempotencyKey`, `seq`, plus **D-03** addressing (`to`, channel/broadcast fields as decided in PLAN).
+- **Base fields:** `version`, `id`, `sessionId`, `kind`, `type`, `payload`, optional `idempotencyKey`, `seq`, plus **D-03** addressing (`to`, `spaceId`, or other space-delivery fields as decided in PLAN).
 - **Primitives:** Use `z.string().uuid()` for UUID strings [CITED: zod.dev v4 JSON Schema — maps to `format: uuid`]. Session IDs are v7 strings — still valid UUID strings; optional **refine** with `uuid.version(id) === 7` from `uuid` for stricter checks on `sessionId` only [VERIFIED: uuid package `version()`].
 - **`payload`:** Start with `z.record(z.string(), z.unknown())` or `z.looseObject()` if you must allow arbitrary keys **and** export JSON Schema — avoid `.transform()` on the envelope if you need accurate Schema export [CITED: v4.zod.dev/json-schema — transform unrepresentable].
 - **`kind`:** `z.enum(['control', 'conversation'])`. If later payloads differ by kind, split into `z.discriminatedUnion('kind', [controlSchema, conversationSchema])` [VERIFIED: Context7 Zod v4].
@@ -324,7 +324,7 @@ export function rangesOverlap(
    - Recommendation: Planner confirms with user once; if deferred, Phase 1 still adds Zod optional + tests and documents relay behavior.
 
 2. **Exact addressing fields on envelope (D-03)**  
-   - What we know: `to` and channel broadcast semantics required.  
+   - What we know: `to` and space-scoped delivery semantics are required.  
    - What’s unclear: Field names and optional vs required per message kind.  
    - Recommendation: Define in PLAN.md; keep schemas JSON-Schema-friendly.
 

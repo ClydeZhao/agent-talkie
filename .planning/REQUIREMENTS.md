@@ -1,7 +1,7 @@
 # Requirements: agent-talkie
 
 **Defined:** 2026-04-10
-**Core Value:** Sessions from different runtimes can collaborate directly through a shared channel without the human acting as copy-paste middleware.
+**Core Value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
 
 ## v1 Requirements
 
@@ -37,26 +37,30 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Collaboration Space
 
-- [ ] **SPACE-01**: Sessions can create, join, and leave a collaboration space (channel)
-- [ ] **SPACE-02**: A session can belong to at most one channel at a time (v1 simplification)
-- [ ] **SPACE-03**: Channel membership is persisted in SQLite and survives relay restarts
+- [ ] **SPACE-01**: Sessions can create, join, and leave a collaboration space
+- [ ] **SPACE-02**: A session can belong to at most one space at a time (v1 simplification)
+- [ ] **SPACE-03**: Space membership is persisted in SQLite and survives relay restarts
 - [ ] **SPACE-04**: Participation requires explicit opt-in (join action or invitation) — network presence alone never grants membership
 
 ### Messaging
 
-- [ ] **MSG-01**: Sessions can send messages directly to another session in the same channel
-- [ ] **MSG-02**: Sessions can send messages addressed to all sessions in the channel (broadcast within channel)
+- [ ] **MSG-01**: Sessions can send messages directly to another session in the same space
+- [ ] **MSG-02**: Sessions can send messages addressed to all sessions in the same space
 - [ ] **MSG-03**: Multi-turn conversations are supported — sessions can continue back-and-forth exchanges, not just one-shot dispatch
-- [ ] **MSG-04**: Human messages to the channel route to the orchestrator session by default
+- [ ] **MSG-04**: Human messages to the space route to the orchestrator session by default
 - [ ] **MSG-05**: Human can address a specific session directly, bypassing orchestrator default
 - [ ] **MSG-06**: Orchestrator can assign work to sessions, follow up on progress, and consolidate questions for the human
 
 ### Collaboration Metadata
 
 - [ ] **META-01**: Each session has layer-owned collaboration metadata: role, focus, progress status, and blocked state
-- [ ] **META-02**: Metadata is visible to other sessions in the same channel and to observing humans
+- [ ] **META-02**: Metadata is visible to other sessions in the same space and to observing humans
 - [ ] **META-03**: Status-like fields (activity, blocked state, last update) can refresh automatically; semantic fields (role, display name, focus) are human-controlled
-- [ ] **META-04**: Metadata updates are propagated to channel participants via the relay
+- [ ] **META-04**: Metadata updates are propagated to space participants via the relay
+
+### Multi-Human
+
+- [ ] **MHUM-01**: Multiple humans can participate in the same collaboration space, each bringing their own local agent sessions
 
 ### Adapters
 
@@ -84,12 +88,11 @@ Deferred to future release. Tracked but not in current roadmap.
 ### Trust & Remote
 
 - **TRUST-01**: Token/TLS/tunnel authentication story for non-loopback relay connections
-- **TRUST-02**: Invite-based channel membership for cross-machine collaboration
+- **TRUST-02**: Invite-based space membership for cross-machine collaboration
 - **TRUST-03**: Loopback-only binding by default; non-loopback requires explicit trust configuration
 
 ### Multi-Human
 
-- **MHUM-01**: Multiple humans can participate in the same collaboration space, each bringing their own local agent sessions
 - **MHUM-02**: Cross-user invitation and approval flow for joining collaboration spaces
 
 ### Advanced Orchestration
@@ -101,7 +104,7 @@ Deferred to future release. Tracked but not in current roadmap.
 
 - **UX-01**: Session finder / "ring my terminal" — locate a session from the web UI and highlight its hosting terminal
 - **UX-02**: Web-based collaboration dashboard with richer oversight than CLI
-- **UX-03**: Multi-channel per session — a session can participate in multiple channels simultaneously
+- **UX-03**: Multi-space per session — a session can participate in multiple spaces simultaneously
 
 ## Out of Scope
 
@@ -167,13 +170,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OVER-01 | 5 | Pending |
 | OVER-02 | 5 | Pending |
 | OVER-03 | 5 | Pending |
+| MHUM-01 | 5 | Pending |
 | CLI-01 | 3 | Pending |
 | CLI-02 | 3 | Pending |
 | CLI-03 | 3 | Pending |
 
 **Coverage:**
-- v1 requirements: 43 total
-- Mapped to phases: 43
+- v1 requirements: 44 total
+- Mapped to phases: 44
 - Unmapped: 0
 
 ---

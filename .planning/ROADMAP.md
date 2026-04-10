@@ -4,7 +4,7 @@
 **Created:** 2026-04-10
 **Granularity:** Coarse
 **Phases:** 5
-**Requirements covered:** 43/43
+**Requirements covered:** 44/44
 
 ## Milestone 1: agent-talkie v1
 
@@ -35,13 +35,13 @@ Plans:
 
 ### Phase 2: Relay — WebSocket, validate, route
 
-**Goal:** A running relay accepts WebSocket connections, authoritatively validates traffic, persists channel state, and routes messages between sessions in one space without broadcast-to-all leakage.
+**Goal:** A running relay accepts WebSocket connections, authoritatively validates traffic, persists space state, and routes messages between sessions in one space without broadcast-to-all leakage.
 
 **Requirements:** RELAY-01, RELAY-02, RELAY-03, RELAY-08, RELAY-09, SPACE-01, SPACE-02, SPACE-03, SPACE-04, MSG-01, MSG-02, MSG-03
 
 **Success criteria:**
 
-1. Two (or more) test clients on WebSockets can join a space, exchange direct and channel-scoped messages, and continue multi-turn exchanges with ordering/gap signals per protocol.
+1. Two (or more) test clients on WebSockets can join a space, exchange direct and space-scoped messages, and continue multi-turn exchanges with ordering/gap signals per protocol.
 2. Every inbound envelope is validated with the same Zod rules as clients; invalid messages are rejected without corrupting relay state.
 3. Delivery targets explicit session ids (peer or subset); observers can verify traffic is not blindly broadcast to unrelated sessions.
 4. Spaces, memberships, session registry, and transcript pointers are durable in SQLite with WAL and busy_timeout; restart preserves membership and registry.
@@ -84,7 +84,7 @@ Plans:
 
 **Goal:** v1 is proven with two real runtime adapters and a human-visible oversight surface that respects native UX boundaries and timeline observation without flooding every session.
 
-**Requirements:** ADAPT-02, OVER-01, OVER-02, OVER-03
+**Requirements:** ADAPT-02, OVER-01, OVER-02, OVER-03, MHUM-01
 
 **Success criteria:**
 
@@ -92,6 +92,7 @@ Plans:
 2. A human-facing surface (CLI and/or logs/UI as implemented) shows participants, activity, focus, and what needs attention.
 3. When a session is blocked on a native prompt, the layer surfaces which session and why without replacing native approval UI.
 4. Humans can read the collaboration timeline without every message being auto-injected as context into all sessions.
+5. Multiple humans can participate in the same collaboration space, each bringing their own local agent sessions.
 
 ---
 

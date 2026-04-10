@@ -232,7 +232,7 @@ Adapters sit **outside** the core transport:
 
 | Source | Use in this doc |
 |--------|-----------------|
-| `.planning/PROJECT.md` | Requirements, simplifications (one channel per session v1), constraint alignment |
+| `.planning/PROJECT.md` | Requirements, simplifications (one space per session v1), constraint alignment |
 | `PRD.md` | Session-first model, orchestrator responsibilities, human routing expectations |
 | `ARCHITECTURE-CONSTRAINTS.md` | Hard constraints, default architecture, open design questions (auth, exact schema, idle T) |
 | Common practice: **star topology relay**, **daemon supervision**, **hub validates** — not proprietary to a single library | Lifecycle and separation-of-concerns patterns |

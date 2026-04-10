@@ -6,7 +6,7 @@ A local-first collaboration layer that connects independently running coding-age
 
 ## Core Value
 
-Sessions from different runtimes can collaborate directly through a shared channel. The human supervises and guides but never acts as copy-paste middleware between tools.
+Sessions from different runtimes can collaborate directly through a shared space. The human supervises and guides but never acts as copy-paste middleware between tools.
 
 ## Requirements
 
@@ -55,7 +55,7 @@ This is not another same-runtime subagent system. It is an interoperability laye
 
 The default architecture is relay-based, local-first, zero-external-services. The canonical core transport is WebSocket. Local default is relay on localhost. Remote extension uses the same protocol with relay deployed elsewhere. Adapter-specific ingress (stdio bridge, etc.) is an adapter-edge concern.
 
-**Simplification note:** A session can only join one channel at a time. Multi-channel support is deferred.
+**Simplification note:** A session can only join one space at a time. Multi-space support is deferred.
 
 **Product idea for later:** Web UI with session finder — locate a session and its hosting terminal highlights or rings, similar to Apple Watch finding iPhone.
 
@@ -75,7 +75,7 @@ The default architecture is relay-based, local-first, zero-external-services. Th
 | WebSocket relay as canonical transport | Unifies local and remote under one protocol; avoids divergent transport semantics | — Pending |
 | SQLite for collaboration metadata | Zero-external-services constraint; sufficient for local-first with natural extension | — Pending |
 | Zero external services as default | Product must feel lightweight and immediate; no infrastructure prerequisites | — Pending |
-| One session per channel (v1) | Simplify initial implementation; multi-channel deferred | — Pending |
+| One session per space (v1) | Simplify initial implementation; multi-space deferred | — Pending |
 | Relay daemon lifecycle independent of participants | First session must not be permanent host; relay must survive participant churn | — Pending |
 | Adapter ingress separate from core transport | Runtime-specific adapters (stdio bridge) are edge concerns, not core architecture | — Pending |
 | Versioned envelope with Zod + JSON Schema | Type safety for TypeScript consumers; JSON Schema export for non-TS consumers; schema evolution built in | — Pending |

@@ -16,11 +16,11 @@ Define the wire contract (versioned message envelope with Zod validation and JSO
 ### Envelope Structure
 - **D-01:** Flat top-level envelope — fields at the wire level include `version` (integer), `id` (message UUID), `sessionId` (sender), `kind` (control | conversation), `type` (specific message type string), `payload` (generic object), plus optional `idempotencyKey` and `seq` (sequence number). No deep nesting of envelope metadata.
 - **D-02:** `kind` field distinguishes control messages (join, leave, metadata updates, heartbeat) from conversation messages (session-to-session, human-to-orchestrator). Both use the same envelope shape.
-- **D-03:** Addressing fields (`to` for direct session, or channel-scoped broadcast) are part of the envelope, not buried in payload.
+- **D-03:** Addressing fields (`to` for direct session, or space-scoped delivery) are part of the envelope, not buried in payload.
 
 ### Session Identity Model
 - **D-04:** Session IDs use UUID v7 (time-sortable, globally unique, no coordination needed). Display names are human-chosen strings.
-- **D-05:** Disambiguation on name collision: relay appends a short numeric suffix (e.g., "impl-1", "impl-2") when multiple sessions share the same display name in a channel. The suffix is relay-managed, not user-chosen.
+- **D-05:** Disambiguation on name collision: relay appends a short numeric suffix (e.g., "impl-1", "impl-2") when multiple sessions share the same display name in a space. The suffix is relay-managed, not user-chosen.
 - **D-06:** Minimal workspace context fields: `runtime` (string, e.g. "cursor", "claude-code", "codex"), `workspaceLabel` (human-readable, not full path), `branch` (optional), `focus` (optional, free text). These are declared by the session, not extracted by the relay.
 
 ### SQLite Schema Approach
@@ -83,7 +83,7 @@ None — this phase establishes the foundational patterns.
 ## Specific Ideas
 
 - Envelope should stay JSON-Schema-friendly — avoid Zod constructs that don't export cleanly to JSON Schema (per research/STACK.md guidance on Zod 4 `z.toJSONSchema()`)
-- The SCRATCHPAD.md "one session per channel" simplification is already reflected in SPACE-02 requirement — schema should support this constraint naturally
+- The SCRATCHPAD.md "one session per space" simplification is already reflected in SPACE-02 requirement — schema should support this constraint naturally
 - Protocol module should be a separate package/directory that can be consumed independently of relay or client code
 
 </specifics>

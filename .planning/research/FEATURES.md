@@ -5,7 +5,7 @@
 **Researched:** 2026-04-10  
 **Confidence:** **MEDIUM** — synthesis from PRD, architecture constraints, and public ecosystem signals; competitive landscape moves quickly.
 
-**Scope reminder:** This is a **local-first interoperability layer** connecting **concrete running sessions** (not runtime brands). Default path: **zero external services**, **SQLite**, **WebSocket relay**. The product **does not host or execute** agents. **v1:** one channel (collaboration space) per session.
+**Scope reminder:** This is a **local-first interoperability layer** connecting **concrete running sessions** (not runtime brands). Default path: **zero external services**, **SQLite**, **WebSocket relay**. The product **does not host or execute** agents. **v1:** one collaboration space per session.
 
 ---
 
@@ -39,7 +39,7 @@ Features without which the product fails the stated job: **replace the human as 
 | Feature | Why table stakes | Complexity | Notes |
 |---------|------------------|------------|-------|
 | **Named session identity** | Addressing is by session, not brand; collisions need disambiguators | Med | PRD: human-usable names + stable IDs |
-| **Join / leave a collaboration space (channel)** | Explicit membership; v1 one channel per session | Med | Depends on relay + store |
+| **Join / leave a collaboration space** | Explicit membership; v1 one space per session | Med | Depends on relay + store |
 | **WebSocket relay transport** | Canonical real-time bus; local = localhost relay | Med–High | ARCHITECTURE-CONSTRAINTS |
 | **Relay daemon lifecycle (auto local)** | Usable without manual infra; relay survives participant churn | Med–High | Not “first session is permanent host” |
 | **SQLite-backed durable state** | Spaces, memberships, metadata, pointers to history | Med | Not JSON/Markdown as sole SoT |
@@ -140,7 +140,7 @@ Explicit trust (invite/token)
 **MVP should include**
 
 - Local relay (auto lifecycle), WebSocket core, SQLite SoT  
-- Join one channel per session; leave  
+- Join one space per session; leave  
 - Named sessions with minimal workspace/runtime labels  
 - Deliver **session↔session** and **human→orchestrator (default)** paths; orchestrator can **assign / consolidate** at least at message-routing level  
 - Multi-turn: thread or sequence model persisted enough to resume after reconnect  
@@ -170,7 +170,7 @@ Legend: **U** = user/value urgency for core thesis, **E** = engineering effort (
 | Relay + WS + SQLite | High | High | High | High | Foundation |
 | Envelope + schema + idempotency | High | Med | High | Med | Interop safety |
 | Session identity + naming | High | Med | Med | High | PRD core |
-| Join/leave + one channel | High | Med | Low | High | v1 rule |
+| Join/leave + one space | High | Med | Low | High | v1 rule |
 | Routed messaging | High | Med | High | High | vs broadcast-as-context |
 | Adapter (runtime A) | High | High | High | High | Proof |
 | Adapter (runtime B) | High | High | High | High | Cross-runtime proof |

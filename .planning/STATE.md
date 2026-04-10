@@ -18,7 +18,7 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-04-10)
 
-**Core value:** Sessions from different runtimes can collaborate directly through a shared channel without the human acting as copy-paste middleware.
+**Core value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
 
 **Current focus:** Phase 1
 
