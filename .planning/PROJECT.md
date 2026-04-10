@@ -14,21 +14,21 @@ Sessions from different runtimes can collaborate directly through a shared space
 
 - [x] Versioned message envelope with Zod validation and JSON Schema export — Validated in Phase 1
 - [x] Idempotency where the protocol requires it — Validated in Phase 1
-- [x] Named sessions with stable identity join a shared collaboration space — Identity model validated in Phase 1 (joining space deferred to Phase 2)
+- [x] Named sessions with stable identity join a shared collaboration space — Validated in Phase 2 (slug-based join, membership persistence)
+- [x] Direct session-to-session messaging across runtimes via relay — Validated in Phase 2 (direct + fan-out routing)
+- [x] Multi-turn conversations, not just one-shot dispatch — Validated in Phase 2 (integration test proves 3+ round-trips)
+- [x] Explicit opt-in participation (join/invite, not ambient discovery) — Validated in Phase 2 (space.join required before routing)
+- [x] WebSocket-based relay as canonical core transport — Validated in Phase 2 (createRelayServer on localhost)
+- [x] SQLite-backed collaboration metadata and state — Validated in Phase 2 (spaces, memberships, transcript in SQLite with WAL)
 
 ### Active
 
-- [ ] Direct session-to-session messaging across runtimes via relay
 - [ ] Orchestrator role that coordinates work, follows up, and escalates to humans
-- [ ] Multi-turn conversations, not just one-shot dispatch
 - [ ] Collaboration metadata (role, focus, progress) owned by the collaboration layer
 - [ ] Human-visible surface for oversight and intervention
-- [ ] Explicit opt-in participation (join/invite, not ambient discovery)
 - [ ] Local context stays local unless deliberately shared
 - [ ] Peer-first question resolution before human escalation
 - [ ] Multiple humans can participate, each bringing their own local agent sessions
-- [ ] WebSocket-based relay as canonical core transport
-- [ ] SQLite-backed collaboration metadata and state
 - [ ] Automatic local relay daemon lifecycle
 - [ ] Adapter ingress patterns for connecting native runtimes
 
@@ -71,10 +71,10 @@ The default architecture is relay-based, local-first, zero-external-services. Th
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| WebSocket relay as canonical transport | Unifies local and remote under one protocol; avoids divergent transport semantics | — Pending |
-| SQLite for collaboration metadata | Zero-external-services constraint; sufficient for local-first with natural extension | Foundation validated in Phase 1 (DDL + session/idempotency repos) |
+| WebSocket relay as canonical transport | Unifies local and remote under one protocol; avoids divergent transport semantics | Validated in Phase 2 (createRelayServer + handshake + routing) |
+| SQLite for collaboration metadata | Zero-external-services constraint; sufficient for local-first with natural extension | Validated in Phase 2 (spaces, memberships, transcript all in SQLite) |
 | Zero external services as default | Product must feel lightweight and immediate; no infrastructure prerequisites | — Pending |
-| One session per space (v1) | Simplify initial implementation; multi-space deferred | — Pending |
+| One session per space (v1) | Simplify initial implementation; multi-space deferred | Enforced in Phase 2 (already_in_space error on second join) |
 | Relay daemon lifecycle independent of participants | First session must not be permanent host; relay must survive participant churn | — Pending |
 | Adapter ingress separate from core transport | Runtime-specific adapters (stdio bridge) are edge concerns, not core architecture | — Pending |
 | Versioned envelope with Zod + JSON Schema | Type safety for TypeScript consumers; JSON Schema export for non-TS consumers; schema evolution built in | Validated in Phase 1 |
@@ -97,4 +97,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-10 after Phase 1 completion*
+*Last updated: 2026-04-10 after Phase 2 completion*
