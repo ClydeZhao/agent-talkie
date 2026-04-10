@@ -178,7 +178,7 @@ export async function createRelayServer(opts: {
   dbPath: string;
   port?: number;
   pepper?: string;
-}): Promise<{ url: string; close: () => Promise<void> }> {
+}): Promise<{ url: string; dbPath: string; close: () => Promise<void> }> {
   const db = openDatabase(opts.dbPath);
   migrate(db);
   const pepper =
@@ -430,6 +430,7 @@ export async function createRelayServer(opts: {
 
   return {
     url: `ws://${LISTEN_HOST}:${actualPort}`,
+    dbPath: opts.dbPath,
     close: () =>
       new Promise((resolve, reject) => {
         clearInterval(spaceGcInterval);
