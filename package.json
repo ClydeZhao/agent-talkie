@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "npm run test -w @agent-talkie/protocol",
+    "test": "npm run test -w @agent-talkie/protocol && npm run test -w @agent-talkie/persistence",
     "build": "npm run build -w @agent-talkie/protocol"
   }
 }
