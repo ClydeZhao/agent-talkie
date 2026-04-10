@@ -23,3 +23,8 @@ export {
   setSpaceArchived,
   type SpaceStatus,
 } from "./repositories/spaces.js";
+export {
+  appendTranscriptEntry,
+  listTranscriptTailBySeq,
+  nextRelaySeq,
+} from "./repositories/transcript.js";
