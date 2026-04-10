@@ -7,3 +7,7 @@ export {
   type NewSessionInput,
   validateSessionFields,
 } from "./repositories/sessions.js";
+export {
+  pruneExpiredIdempotencyKeys,
+  tryRecordIdempotencyKey,
+} from "./repositories/idempotency.js";
