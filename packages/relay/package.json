@@ -14,6 +14,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsup",
+    "pretest": "npm run build -w @agent-talkie/protocol",
     "test": "vitest run"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
+    "uuid": "^13.0.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
