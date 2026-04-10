@@ -9,11 +9,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Protocol
 
-- [ ] **PROTO-01**: Versioned message envelope with explicit wire version field validated by Zod at runtime
+- [x] **PROTO-01**: Versioned message envelope with explicit wire version field validated by Zod at runtime
 - [ ] **PROTO-02**: JSON Schema export generated from Zod schemas for non-TypeScript consumers
-- [ ] **PROTO-03**: Idempotency keys on protocol operations that produce side effects, enabling safe retries on reconnect
-- [ ] **PROTO-04**: Message sequence numbers per session for ordering and gap detection
-- [ ] **PROTO-05**: Control messages and conversation messages distinguished as protocol-level semantics within the same envelope
+- [x] **PROTO-03**: Idempotency keys on protocol operations that produce side effects, enabling safe retries on reconnect
+- [x] **PROTO-04**: Message sequence numbers per session for ordering and gap detection
+- [x] **PROTO-05**: Control messages and conversation messages distinguished as protocol-level semantics within the same envelope
 - [ ] **PROTO-06**: Schema evolution strategy with version negotiation during handshake
 
 ### Session Identity
@@ -130,11 +130,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROTO-01 | 1 | Pending |
+| PROTO-01 | 1 | Complete |
 | PROTO-02 | 1 | Pending |
-| PROTO-03 | 1 | Pending |
-| PROTO-04 | 1 | Pending |
-| PROTO-05 | 1 | Pending |
+| PROTO-03 | 1 | Complete |
+| PROTO-04 | 1 | Complete |
+| PROTO-05 | 1 | Complete |
 | PROTO-06 | 1 | Pending |
 | SESS-01 | 1 | Pending |
 | SESS-02 | 1 | Pending |
