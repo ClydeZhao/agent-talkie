@@ -1,0 +1,13 @@
+{
+  "name": "agent-talkie",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "npm run test -w @agent-talkie/protocol",
+    "build": "npm run build -w @agent-talkie/protocol"
+  }
+}
