@@ -55,6 +55,14 @@ Plans:
 
 **Requirements:** RELAY-04, RELAY-05, RELAY-06, RELAY-07, CLI-01, CLI-02, CLI-03
 
+**Plans:** 3 plans in 3 waves
+
+Plans:
+
+- [ ] 03-01-PLAN.md — Relay daemon entry, health probe, idle shutdown, bounded graceful close (RELAY-07)
+- [ ] 03-02-PLAN.md — Supervisor lockfile, liveness, fork+IPC+disconnect ensure path (RELAY-04, RELAY-05, RELAY-06)
+- [ ] 03-03-PLAN.md — `talkie` CLI: relay start/stop/status/ensure, ping, session stub (CLI-01, CLI-02, CLI-03)
+
 **Success criteria:**
 
 1. With no relay running, a normal client or CLI action brings up a local relay without the user manually starting a long-lived process first.
