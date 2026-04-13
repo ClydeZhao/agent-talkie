@@ -27,3 +27,17 @@ export {
   sessionResumeMessageSchema,
   type SessionResumeMessage,
 } from "./relay-wire.js";
+export {
+  metadataPatchPayloadSchema,
+  type MetadataPatchPayload,
+  metadataQueryPayloadSchema,
+  type MetadataQueryPayload,
+  orchestratorClearPayloadSchema,
+  type OrchestratorClearPayload,
+  orchestratorDesignatePayloadSchema,
+  type OrchestratorDesignatePayload,
+  progressSchema,
+  type Progress,
+  taskAssignPayloadSchema,
+  type TaskAssignPayload,
+} from "./collaboration-wire.js";

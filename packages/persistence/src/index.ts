@@ -1,6 +1,14 @@
 export { openDatabase } from "./db.js";
 export { migrate } from "./migrate.js";
 export {
+  getCollaborationMetadataSnapshot,
+  getOrchestratorSessionId,
+  setOrchestratorSessionId,
+  upsertCollaborationProfile,
+  upsertCollaborationStatus,
+  type CollaborationMetadataSnapshot,
+} from "./repositories/collaboration-metadata.js";
+export {
   createSession,
   disambiguateDisplayName,
   getSessionById,
