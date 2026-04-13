@@ -79,13 +79,13 @@ Plans:
 
 **Requirements:** MSG-04, MSG-05, MSG-06, META-01, META-02, META-03, META-04, ADAPT-01, ADAPT-03, ADAPT-04
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 
 - [x] 04-01-PLAN.md — SQLite + protocol: is_human, orchestrator column, collaboration tables, collaboration-wire Zod, persistence snapshot/upsert (MSG/META foundation)
 - [x] 04-02-PLAN.md — Relay: human→orchestrator routing, collaboration control handlers, transcript rules, vitest routing matrix (MSG-04–MSG-06, META-01–META-04)
-- [ ] 04-03-PLAN.md — @agent-talkie/client, @agent-talkie/adapter-stdio, docs/adapter-ingress.md (ADAPT-01, ADAPT-03, ADAPT-04)
+- [x] 04-03-PLAN.md — @agent-talkie/client, @agent-talkie/adapter-stdio, docs/adapter-ingress.md (ADAPT-01, ADAPT-03, ADAPT-04)
 
 **Success criteria:**
 

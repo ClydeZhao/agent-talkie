@@ -64,10 +64,10 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Adapters
 
-- [ ] **ADAPT-01**: Adapter ingress pattern defined — adapters translate runtime-native I/O into valid protocol envelopes sent to the relay via WebSocket
+- [x] **ADAPT-01**: Adapter ingress pattern defined — adapters translate runtime-native I/O into valid protocol envelopes sent to the relay via WebSocket
 - [ ] **ADAPT-02**: At least two runtime adapters implemented to prove cross-runtime collaboration (exact runtimes are implementation choices)
-- [ ] **ADAPT-03**: Adapters are edge concerns — they connect to the relay using the same session client and WebSocket protocol as any other consumer
-- [ ] **ADAPT-04**: Stdio-based adapter with framed messages, bounded queues, and clear overload errors for runtimes that communicate via stdin/stdout
+- [x] **ADAPT-03**: Adapters are edge concerns — they connect to the relay using the same session client and WebSocket protocol as any other consumer
+- [x] **ADAPT-04**: Stdio-based adapter with framed messages, bounded queues, and clear overload errors for runtimes that communicate via stdin/stdout
 
 ### Human Oversight
 
@@ -163,10 +163,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | META-02 | 4 | Complete |
 | META-03 | 4 | Complete |
 | META-04 | 4 | Complete |
-| ADAPT-01 | 4 | Pending |
+| ADAPT-01 | 4 | Complete |
 | ADAPT-02 | 5 | Pending |
-| ADAPT-03 | 4 | Pending |
-| ADAPT-04 | 4 | Pending |
+| ADAPT-03 | 4 | Complete |
+| ADAPT-04 | 4 | Complete |
 | OVER-01 | 5 | Pending |
 | OVER-02 | 5 | Pending |
 | OVER-03 | 5 | Pending |

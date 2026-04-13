@@ -20,6 +20,7 @@ Sessions from different runtimes can collaborate directly through a shared space
 - [x] Explicit opt-in participation (join/invite, not ambient discovery) — Validated in Phase 2 (space.join required before routing)
 - [x] WebSocket-based relay as canonical core transport — Validated in Phase 2 (createRelayServer on localhost)
 - [x] SQLite-backed collaboration metadata and state — Validated in Phase 2 (spaces, memberships, transcript in SQLite with WAL)
+- [x] Adapter ingress patterns for connecting native runtimes — Validated in Phase 4 (`@agent-talkie/client`, `@agent-talkie/adapter-stdio`, `docs/adapter-ingress.md`)
 
 ### Active
 
@@ -30,7 +31,6 @@ Sessions from different runtimes can collaborate directly through a shared space
 - [ ] Peer-first question resolution before human escalation
 - [ ] Multiple humans can participate, each bringing their own local agent sessions
 - [x] Automatic local relay daemon lifecycle — Validated in Phase 3 (ensureRelayRunning, fork+IPC, lockfile, idle shutdown, CLI)
-- [ ] Adapter ingress patterns for connecting native runtimes
 
 ### Out of Scope
 
@@ -76,7 +76,7 @@ The default architecture is relay-based, local-first, zero-external-services. Th
 | Zero external services as default | Product must feel lightweight and immediate; no infrastructure prerequisites | Validated in Phase 3 (npm install only, no external services) |
 | One session per space (v1) | Simplify initial implementation; multi-space deferred | Enforced in Phase 2 (already_in_space error on second join) |
 | Relay daemon lifecycle independent of participants | First session must not be permanent host; relay must survive participant churn | Validated in Phase 3 (fork+disconnect, lockfile, idle shutdown) |
-| Adapter ingress separate from core transport | Runtime-specific adapters (stdio bridge) are edge concerns, not core architecture | — Pending |
+| Adapter ingress separate from core transport | Runtime-specific adapters (stdio bridge) are edge concerns, not core architecture | Validated in Phase 4 (shared client + stdio adapter + docs) |
 | Versioned envelope with Zod + JSON Schema | Type safety for TypeScript consumers; JSON Schema export for non-TS consumers; schema evolution built in | Validated in Phase 1 |
 
 ## Evolution
@@ -97,4 +97,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-13 after Phase 3 completion*
+*Last updated: 2026-04-13 after Phase 4 plan 04-03 (client + stdio adapter)*
