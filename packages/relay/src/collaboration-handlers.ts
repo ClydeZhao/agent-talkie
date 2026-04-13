@@ -5,7 +5,9 @@ import {
   getCollaborationMetadataSnapshot,
   getOrchestratorSessionId,
   getSessionById,
+  getSpaceOwnerSessionId,
   setOrchestratorSessionId,
+  tryAssignSpaceOwnerIfUnsetForHuman,
   tryRecordIdempotencyKey,
   upsertCollaborationProfile,
   upsertCollaborationStatus,
@@ -140,6 +142,22 @@ export function handleCollaborationControl(
       return true;
     }
 
+    const owner = getSpaceOwnerSessionId(db, spaceId);
+    if (owner !== null && owner !== envelope.sessionId) {
+      sendJson(ws, { type: "protocol.error", error: "not_space_owner" });
+      return true;
+    }
+    if (owner === null) {
+      const claimed = tryAssignSpaceOwnerIfUnsetForHuman(db, {
+        spaceId,
+        sessionId: envelope.sessionId,
+      });
+      if (!claimed) {
+        sendJson(ws, { type: "protocol.error", error: "not_space_owner" });
+        return true;
+      }
+    }
+
     const run = (): void => {
       const { inserted } = tryRecordIdempotencyKey(
         db,
@@ -201,6 +219,22 @@ export function handleCollaborationControl(
         error: "orchestrator_designate_forbidden",
       });
       return true;
+    }
+
+    const ownerClear = getSpaceOwnerSessionId(db, spaceId);
+    if (ownerClear !== null && ownerClear !== envelope.sessionId) {
+      sendJson(ws, { type: "protocol.error", error: "not_space_owner" });
+      return true;
+    }
+    if (ownerClear === null) {
+      const claimed = tryAssignSpaceOwnerIfUnsetForHuman(db, {
+        spaceId,
+        sessionId: envelope.sessionId,
+      });
+      if (!claimed) {
+        sendJson(ws, { type: "protocol.error", error: "not_space_owner" });
+        return true;
+      }
     }
 
     const run = (): void => {

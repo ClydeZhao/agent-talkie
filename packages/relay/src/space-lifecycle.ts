@@ -12,6 +12,7 @@ import {
   normalizeSpaceSlug,
   reviveSpaceFromArchived,
   setSpaceArchived,
+  tryAssignSpaceOwnerIfUnsetForHuman,
   tryRecordIdempotencyKey,
 } from "@agent-talkie/persistence";
 
@@ -101,6 +102,10 @@ export function handleSpaceJoin(
           closeConnection: true,
         };
       }
+      tryAssignSpaceOwnerIfUnsetForHuman(db, {
+        spaceId: row.space_id,
+        sessionId: args.sessionId,
+      });
       return { kind: "joined", spaceId: row.space_id, slug: row.slug };
     }
 
@@ -122,6 +127,10 @@ export function handleSpaceJoin(
       return { kind: "error", error: "already_in_space" };
     }
     if (activeSpaceId === targetSpaceId) {
+      tryAssignSpaceOwnerIfUnsetForHuman(db, {
+        spaceId: targetSpaceId,
+        sessionId: args.sessionId,
+      });
       const slugRow = db
         .prepare(`SELECT slug FROM spaces WHERE id = ?`)
         .get(targetSpaceId) as { slug: string } | undefined;
@@ -151,6 +160,11 @@ export function handleSpaceJoin(
         args.nowMs,
       );
     }
+
+    tryAssignSpaceOwnerIfUnsetForHuman(db, {
+      spaceId: targetSpaceId,
+      sessionId: args.sessionId,
+    });
 
     const slugRow = db
       .prepare(`SELECT slug FROM spaces WHERE id = ?`)

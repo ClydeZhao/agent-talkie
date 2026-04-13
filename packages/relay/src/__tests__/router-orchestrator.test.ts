@@ -16,6 +16,7 @@ import {
   migrate,
   openDatabase,
   setOrchestratorSessionId,
+  tryAssignSpaceOwnerIfUnsetForHuman,
 } from "@agent-talkie/persistence";
 import type { WebSocket } from "ws";
 import WebSocketImpl from "ws";
@@ -78,6 +79,7 @@ describe("routeEnvelope orchestrator defaults", () => {
     const { id: spaceId } = insertSpaceWithSlug(db, { slug: "orch-test", nowMs: now });
     insertMembership(db, { spaceId, sessionId: idH, nowMs: now });
     insertMembership(db, { spaceId, sessionId: idA, nowMs: now });
+    tryAssignSpaceOwnerIfUnsetForHuman(db, { spaceId, sessionId: idH });
     setOrchestratorSessionId(db, spaceId, idA, now);
 
     const wsH = captureWs();
@@ -118,6 +120,7 @@ describe("routeEnvelope orchestrator defaults", () => {
     const { id: spaceId } = insertSpaceWithSlug(db, { slug: "no-orch", nowMs: now });
     insertMembership(db, { spaceId, sessionId: idH, nowMs: now });
     insertMembership(db, { spaceId, sessionId: idA, nowMs: now });
+    tryAssignSpaceOwnerIfUnsetForHuman(db, { spaceId, sessionId: idH });
 
     const wsH = captureWs();
     const wsA = captureWs();
@@ -157,6 +160,7 @@ describe("routeEnvelope orchestrator defaults", () => {
     const { id: spaceId } = insertSpaceWithSlug(db, { slug: "off-orch", nowMs: now });
     insertMembership(db, { spaceId, sessionId: idH, nowMs: now });
     insertMembership(db, { spaceId, sessionId: idA, nowMs: now });
+    tryAssignSpaceOwnerIfUnsetForHuman(db, { spaceId, sessionId: idH });
     setOrchestratorSessionId(db, spaceId, idA, now);
 
     const wsH = captureWs();
@@ -201,6 +205,7 @@ describe("routeEnvelope orchestrator defaults", () => {
     insertMembership(db, { spaceId, sessionId: idH, nowMs: now });
     insertMembership(db, { spaceId, sessionId: idA, nowMs: now });
     insertMembership(db, { spaceId, sessionId: idB, nowMs: now });
+    tryAssignSpaceOwnerIfUnsetForHuman(db, { spaceId, sessionId: idH });
     setOrchestratorSessionId(db, spaceId, idA, now);
 
     const wsH = captureWs();
