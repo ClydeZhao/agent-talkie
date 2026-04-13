@@ -102,6 +102,15 @@ Plans:
 
 **Requirements:** ADAPT-02, OVER-01, OVER-02, OVER-03, MHUM-01
 
+**Plans:** 4 plans in 4 waves
+
+Plans:
+
+- [ ] 05-01-PLAN.md — SQLite owner_session_id, join-time owner claim, orchestrator designate/clear not_space_owner gate (MHUM-01)
+- [ ] 05-02-PLAN.md — @agent-talkie/adapter-codex + TalkieSessionClient.joinSpace; Codex stdio bridge + blocked stderr heuristic (ADAPT-02, OVER-02)
+- [ ] 05-03-PLAN.md — persistence oversight reads + @agent-talkie/adapter-cursor-mcp MCP tools/resources (ADAPT-02, OVER-02, OVER-03)
+- [ ] 05-04-PLAN.md — talkie space status / transcript / who / watch CLI + checkpoints (OVER-01, OVER-02, OVER-03, MHUM-01)
+
 **Success criteria:**
 
 1. At least two distinct runtime adapters connect concurrently and collaborate through the relay (cross-runtime proof).
