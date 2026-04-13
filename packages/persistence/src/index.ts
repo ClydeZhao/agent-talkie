@@ -34,6 +34,10 @@ export {
   type SpaceStatus,
 } from "./repositories/spaces.js";
 export {
+  getSpaceOwnerSessionId,
+  tryAssignSpaceOwnerIfUnsetForHuman,
+} from "./repositories/space-owner.js";
+export {
   appendTranscriptEntry,
   listTranscriptEntriesAfterSeq,
   listTranscriptTailBySeq,
