@@ -16,6 +16,40 @@ type RelayReadyMessage = {
   pid?: unknown;
 };
 
+/** Wait until lock shows a bound port or the owning PID is gone / timeout. */
+async function waitForRelayLockPort(
+  dataDir: string,
+  lock: {
+    pid: number;
+    port: number;
+    generation: string;
+  },
+  timeoutMs: number,
+): Promise<
+  | { pid: number; port: number; generation: string }
+  | undefined
+> {
+  const deadline = Date.now() + timeoutMs;
+  let current = lock;
+  while (current.port === 0) {
+    try {
+      process.kill(current.pid, 0);
+    } catch {
+      return undefined;
+    }
+    if (Date.now() >= deadline) {
+      return undefined;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+    const next = readRelayLock(dataDir);
+    if (next === undefined) {
+      return undefined;
+    }
+    current = next;
+  }
+  return current;
+}
+
 function isValidRelayReady(m: unknown): m is {
   type: "relay.ready";
   v: 1;
@@ -61,15 +95,20 @@ export async function ensureRelayRunning(
     const parsed = readRelayLock(dataDir);
     if (parsed === undefined) {
       removeRelayLock(dataDir);
-    } else if ((await classifyRelayLock(parsed)) === "live") {
-      return {
-        port: parsed.port,
-        generation: parsed.generation,
-        pid: parsed.pid,
-        spawned: false,
-      };
     } else {
-      removeRelayLock(dataDir);
+      const ready = await waitForRelayLockPort(dataDir, parsed, forkTimeoutMs);
+      if (ready === undefined) {
+        removeRelayLock(dataDir);
+      } else if ((await classifyRelayLock(ready)) === "live") {
+        return {
+          port: ready.port,
+          generation: ready.generation,
+          pid: ready.pid,
+          spawned: false,
+        };
+      } else {
+        removeRelayLock(dataDir);
+      }
     }
   }
 
@@ -169,7 +208,7 @@ export type RelayStatus =
   | { running: false; reason: "no_lock" }
   | {
       running: false;
-      reason: "stale";
+      reason: "stale" | "starting";
       port?: number;
       pid?: number;
       generation?: string;
@@ -189,6 +228,27 @@ export async function getRelayStatus(opts?: {
   const lock = readRelayLock(dataDir);
   if (lock === undefined) {
     return { running: false, reason: "stale" };
+  }
+
+  if (lock.port === 0) {
+    try {
+      process.kill(lock.pid, 0);
+    } catch {
+      return {
+        running: false,
+        reason: "stale",
+        port: lock.port,
+        pid: lock.pid,
+        generation: lock.generation,
+      };
+    }
+    return {
+      running: false,
+      reason: "starting",
+      port: lock.port,
+      pid: lock.pid,
+      generation: lock.generation,
+    };
   }
 
   if ((await classifyRelayLock(lock)) === "stale") {

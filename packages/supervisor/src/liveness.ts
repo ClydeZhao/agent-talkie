@@ -8,6 +8,15 @@ function healthUrl(port: number, generation: string): string {
 export async function classifyRelayLock(
   lock: RelayLock,
 ): Promise<"live" | "stale"> {
+  if (lock.port === 0) {
+    try {
+      process.kill(lock.pid, 0);
+    } catch {
+      return "stale";
+    }
+    return "stale";
+  }
+
   try {
     process.kill(lock.pid, 0);
   } catch {

@@ -26,7 +26,7 @@ function isValidLockBody(value: unknown): value is RelayLock {
     !Number.isInteger(pid) ||
     pid <= 0 ||
     !Number.isInteger(port) ||
-    port <= 0 ||
+    port < 0 ||
     port > 65535
   ) {
     return false;

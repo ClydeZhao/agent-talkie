@@ -54,35 +54,53 @@ export async function runRelayDaemon(): Promise<void> {
   const idleMs = parseIdleMs();
   const parsedPort = parseListenPort();
 
+  const tmpPath = join(dataDir, "relay.lock.tmp");
+  const writeLockFile = (port: number): void => {
+    const lockBody = JSON.stringify({
+      pid: process.pid,
+      port,
+      generation,
+    });
+    writeFileSync(tmpPath, lockBody, "utf8");
+    renameSync(tmpPath, lockPath);
+  };
+
+  // Provisional lock (port 0) before bind so another ensureRelayRunning cannot
+  // fork a second daemon while this one is still starting.
+  writeLockFile(0);
+
   let closeRelay!: () => Promise<void>;
-  const handle = await createRelayServer({
-    dbPath,
-    ...(parsedPort !== undefined ? { port: parsedPort } : {}),
-    relayGenerationToken: generation,
-    idleShutdownMs: idleMs,
-    onIdleShutdown: async () => {
-      await closeRelay();
-      try {
-        unlinkSync(lockPath);
-      } catch {
-        /* ignore */
-      }
-      process.exit(0);
-    },
-  });
+  let handle: Awaited<ReturnType<typeof createRelayServer>>;
+  try {
+    handle = await createRelayServer({
+      dbPath,
+      ...(parsedPort !== undefined ? { port: parsedPort } : {}),
+      relayGenerationToken: generation,
+      idleShutdownMs: idleMs,
+      onIdleShutdown: async () => {
+        await closeRelay();
+        try {
+          unlinkSync(lockPath);
+        } catch {
+          /* ignore */
+        }
+        process.exit(0);
+      },
+    });
+  } catch (e) {
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  }
   closeRelay = handle.close;
 
   const bound = new URL(handle.url);
   const port =
     bound.port !== "" ? Number(bound.port) : DEFAULT_RELAY_PORT;
-  const lockBody = JSON.stringify({
-    pid: process.pid,
-    port,
-    generation,
-  });
-  const tmpPath = join(dataDir, "relay.lock.tmp");
-  writeFileSync(tmpPath, lockBody, "utf8");
-  renameSync(tmpPath, lockPath);
+  writeLockFile(port);
 
   if (typeof process.send === "function") {
     process.send({
