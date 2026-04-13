@@ -28,10 +28,10 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **RELAY-01**: WebSocket relay server accepts connections, validates envelopes, and routes messages to addressed recipients
 - [ ] **RELAY-02**: Relay performs authoritative Zod validation on all inbound envelopes before routing
 - [ ] **RELAY-03**: Messages are routed by explicit session addressing, not broadcast to all connected sessions
-- [ ] **RELAY-04**: Relay daemon auto-spawns on first use when no relay is running locally
-- [ ] **RELAY-05**: Relay daemon lifecycle is independent of any participant — relay survives session disconnects and reconnects
-- [ ] **RELAY-06**: Single-instance relay enforcement via lockfile with generation tokens for stale lock detection
-- [ ] **RELAY-07**: Relay idle shutdown when no connections remain and no pending protocol state exists
+- [x] **RELAY-04**: Relay daemon auto-spawns on first use when no relay is running locally
+- [x] **RELAY-05**: Relay daemon lifecycle is independent of any participant — relay survives session disconnects and reconnects
+- [x] **RELAY-06**: Single-instance relay enforcement via lockfile with generation tokens for stale lock detection
+- [x] **RELAY-07**: Relay idle shutdown when no connections remain and no pending protocol state exists
 - [ ] **RELAY-08**: SQLite-backed durable state for spaces, memberships, session registry, and transcript pointers (WAL mode, busy_timeout)
 - [ ] **RELAY-09**: Graceful disconnect handling — session departure does not corrupt relay state or other sessions
 
@@ -77,9 +77,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### CLI & Packaging
 
-- [ ] **CLI-01**: Product is installable via `npm install` or runnable via `npx` without separately installing infrastructure
-- [ ] **CLI-02**: CLI entrypoints for relay management (start, stop, status) and session operations
-- [ ] **CLI-03**: Relay auto-start is transparent — the user does not need to manually manage daemon lifecycle for basic local use
+- [x] **CLI-01**: Product is installable via `npm install` or runnable via `npx` without separately installing infrastructure
+- [x] **CLI-02**: CLI entrypoints for relay management (start, stop, status) and session operations
+- [x] **CLI-03**: Relay auto-start is transparent — the user does not need to manually manage daemon lifecycle for basic local use
 
 ## v2 Requirements
 
@@ -143,10 +143,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RELAY-01 | 2 | Pending |
 | RELAY-02 | 2 | Pending |
 | RELAY-03 | 2 | Pending |
-| RELAY-04 | 3 | Pending |
-| RELAY-05 | 3 | Pending |
-| RELAY-06 | 3 | Pending |
-| RELAY-07 | 3 | Pending |
+| RELAY-04 | 3 | Complete |
+| RELAY-05 | 3 | Complete |
+| RELAY-06 | 3 | Complete |
+| RELAY-07 | 3 | Complete |
 | RELAY-08 | 2 | Pending |
 | RELAY-09 | 2 | Pending |
 | SPACE-01 | 2 | Pending |
@@ -171,9 +171,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | OVER-02 | 5 | Pending |
 | OVER-03 | 5 | Pending |
 | MHUM-01 | 5 | Pending |
-| CLI-01 | 3 | Pending |
-| CLI-02 | 3 | Pending |
-| CLI-03 | 3 | Pending |
+| CLI-01 | 3 | Complete |
+| CLI-02 | 3 | Complete |
+| CLI-03 | 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 44 total

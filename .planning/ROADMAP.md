@@ -55,13 +55,13 @@ Plans:
 
 **Requirements:** RELAY-04, RELAY-05, RELAY-06, RELAY-07, CLI-01, CLI-02, CLI-03
 
-**Plans:** 3 plans in 3 waves
+**Plans:** 3/3 plans complete
 
 Plans:
 
-- [ ] 03-01-PLAN.md — Relay daemon entry, health probe, idle shutdown, bounded graceful close (RELAY-07)
-- [ ] 03-02-PLAN.md — Supervisor lockfile, liveness, fork+IPC+disconnect ensure path (RELAY-04, RELAY-05, RELAY-06)
-- [ ] 03-03-PLAN.md — `talkie` CLI: relay start/stop/status/ensure, ping, session stub (CLI-01, CLI-02, CLI-03)
+- [x] 03-01-PLAN.md — Relay daemon entry, health probe, idle shutdown, bounded graceful close (RELAY-07)
+- [x] 03-02-PLAN.md — Supervisor lockfile, liveness, fork+IPC+disconnect ensure path (RELAY-04, RELAY-05, RELAY-06)
+- [x] 03-03-PLAN.md — `talkie` CLI: relay start/stop/status/ensure, ping, session stub (CLI-01, CLI-02, CLI-03)
 
 **Success criteria:**
 
