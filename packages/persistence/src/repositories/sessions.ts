@@ -13,6 +13,8 @@ export type NewSessionInput = {
   workspaceLabel: string;
   branch?: string;
   focus?: string;
+  /** Omitted or false → stored as non-human (0). */
+  isHuman?: boolean;
 };
 
 export function disambiguateDisplayName(
@@ -90,10 +92,11 @@ export function createSession(
   const now = Date.now();
   const branch = input.branch?.trim() || null;
   const focus = input.focus?.trim() || null;
+  const isHuman = input.isHuman === true ? 1 : 0;
 
   db.prepare(
-    `INSERT INTO sessions (id, display_name, runtime, workspace_label, branch, focus, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (id, display_name, runtime, workspace_label, branch, focus, created_at, updated_at, is_human)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     displayName,
@@ -103,6 +106,7 @@ export function createSession(
     focus,
     now,
     now,
+    isHuman,
   );
 
   return { id, displayName };
@@ -119,13 +123,14 @@ export function getSessionById(
       workspaceLabel: string;
       branch: string | null;
       focus: string | null;
+      isHuman: boolean;
       createdAt: number;
       updatedAt: number;
     }
   | undefined {
   const row = db
     .prepare(
-      `SELECT id, display_name, runtime, workspace_label, branch, focus, created_at, updated_at
+      `SELECT id, display_name, runtime, workspace_label, branch, focus, is_human, created_at, updated_at
        FROM sessions WHERE id = ?`,
     )
     .get(id) as
@@ -136,6 +141,7 @@ export function getSessionById(
         workspace_label: string;
         branch: string | null;
         focus: string | null;
+        is_human: number;
         created_at: number;
         updated_at: number;
       }
@@ -152,6 +158,7 @@ export function getSessionById(
     workspaceLabel: row.workspace_label,
     branch: row.branch,
     focus: row.focus,
+    isHuman: row.is_human === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

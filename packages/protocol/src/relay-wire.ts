@@ -25,6 +25,10 @@ export const relayHandshakeNackSchema = z.object({
 
 export type RelayHandshakeNack = z.infer<typeof relayHandshakeNackSchema>;
 
+/**
+ * `isHuman` is persisted from the registrant without extra auth. v1 trusts the
+ * client for localhost relay; optional future auth may harden this (T-04-01-01).
+ */
 export const sessionRegisterMessageSchema = z.object({
   type: z.literal("session.register"),
   newSession: z.object({
@@ -33,6 +37,7 @@ export const sessionRegisterMessageSchema = z.object({
     workspaceLabel: z.string().min(1),
     branch: z.string().optional(),
     focus: z.string().optional(),
+    isHuman: z.boolean().optional().default(false),
   }),
 });
 

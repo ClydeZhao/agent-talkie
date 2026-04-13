@@ -27,6 +27,14 @@ describe("sessions repository", () => {
 
     expect(first.displayName).toBe("impl");
     expect(second.displayName).toBe("impl-1");
+    expect(getSessionById(db, first.id)?.isHuman).toBe(false);
+  });
+
+  it("persists isHuman when true", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const { id } = createSession(db, { ...minimalInput, isHuman: true });
+    expect(getSessionById(db, id)?.isHuman).toBe(true);
   });
 
   it("rejects workspaceLabel longer than 256 characters", () => {
