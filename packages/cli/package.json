@@ -1,0 +1,25 @@
+{
+  "name": "@agent-talkie/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "talkie": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "pretest": "npm run build -w @agent-talkie/protocol && npm run build -w @agent-talkie/persistence && npm run build -w @agent-talkie/relay && npm run build -w @agent-talkie/supervisor && npm run build -w @agent-talkie/cli",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agent-talkie/supervisor": "0.0.0",
+    "commander": "14.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.4"
+  }
+}
