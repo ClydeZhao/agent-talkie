@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "workspaces": [
+    "packages/adapter-stdio",
     "packages/cli",
     "packages/client",
     "packages/persistence",
@@ -14,7 +15,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "npm run test -w @agent-talkie/protocol && npm run test -w @agent-talkie/persistence && npm run test -w @agent-talkie/relay && npm run test -w @agent-talkie/supervisor && npm run test -w @agent-talkie/cli && npm run test -w @agent-talkie/client",
-    "build": "npm run build -w @agent-talkie/protocol && npm run build -w @agent-talkie/persistence && npm run build -w @agent-talkie/relay && npm run build -w @agent-talkie/supervisor && npm run build -w @agent-talkie/cli && npm run build -w @agent-talkie/client"
+    "test": "npm run test -w @agent-talkie/protocol && npm run test -w @agent-talkie/persistence && npm run test -w @agent-talkie/relay && npm run test -w @agent-talkie/supervisor && npm run test -w @agent-talkie/cli && npm run test -w @agent-talkie/client && npm run test -w @agent-talkie/adapter-stdio",
+    "build": "npm run build -w @agent-talkie/protocol && npm run build -w @agent-talkie/persistence && npm run build -w @agent-talkie/relay && npm run build -w @agent-talkie/supervisor && npm run build -w @agent-talkie/cli && npm run build -w @agent-talkie/client && npm run build -w @agent-talkie/adapter-stdio"
   }
 }
