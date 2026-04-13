@@ -303,26 +303,26 @@ export const envelopeSchema = z.object({
 
 **If A1–A3 are wrong:** Adjust router rules and session model in PLAN.md after product confirmation.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **How is “human-originated” determined on the wire?**  
    - What we know: D-02 applies to human messages; discretion allows schema design.  
    - Gap: No field in current `envelopeSchema` marks human vs agent.  
-   - Recommendation: Add `sessions.is_human` (or `participant_kind`) at registration time; relay trusts only server-side state.
+   - Resolution: `sessions.is_human` boolean at registration; relay trusts server-side state. Plan 04-01 adds column; Plan 04-02 uses in routing.
 
-2. **Behavior of undirected non-human conversation**  
+2. **Behavior of undirected non-human conversation** — RESOLVED  
    - What we know: MSG-02 expects addressed-to-space semantics; Phase 2 router broadcasts.  
    - Gap: Whether orchestrator routing coexists with “to all” for agents.  
-   - Recommendation: Keep broadcast for non-human undirected **or** require explicit `to`/space subset; document choice in PLAN.
+   - Resolution: Non-human undirected keeps fan-out broadcast (MSG-02 compatible). Only human undirected routes to orchestrator. Plan 04-02 implements branching.
 
-3. **Orchestrator clears on disconnect?**  
+3. **Orchestrator clears on disconnect?** — RESOLVED  
    - What we know: v2 ORCH-02 deferred; Phase 4 may leave stale orchestrator id until reassigned.  
    - Gap: Error surface when designated session offline.  
-   - Recommendation: Return `orchestrator_offline` or similar; optional clear on leave — planner decision.
+   - Resolution: Return `orchestrator_offline` error when designated session disconnected. No auto-clear (ORCH-02 failover deferred to v2). Plan 04-02 handles in routing branch.
 
-4. **Pagination for metadata snapshot**  
+4. **Pagination for metadata snapshot** — RESOLVED  
    - What we know: Small schema D-04.  
-   - Recommendation: Single page for v1; cursor if spaces scale.
+   - Resolution: Single-page response for v1 (small field set per D-04). Cursor pagination deferred. Plan 04-02 implements `metadata.query` single-page.
 
 ## Environment Availability
 
