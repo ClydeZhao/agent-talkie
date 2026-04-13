@@ -33,6 +33,7 @@ import {
 import { parseAndValidateEnvelope } from "./validation.js";
 
 /** Post-bind frames: JSON → {@link parseAndValidateEnvelope} (wraps `safeParseEnvelope`). */
+export const DEFAULT_RELAY_IDLE_SHUTDOWN_MS = 300000;
 export const DEFAULT_RELAY_PORT = 18765;
 export const LISTEN_HOST = "127.0.0.1";
 export const MAX_INBOUND_WS_BYTES = 262144;
@@ -174,10 +175,15 @@ function sendJson(ws: WebSocket, payload: unknown): void {
   }
 }
 
+const RELAY_POLITE_CLOSE_PHASE_MS = 2000;
+
 export async function createRelayServer(opts: {
   dbPath: string;
   port?: number;
   pepper?: string;
+  relayGenerationToken?: string;
+  idleShutdownMs?: number;
+  onIdleShutdown?: () => void | Promise<void>;
 }): Promise<{ url: string; dbPath: string; close: () => Promise<void> }> {
   const db = openDatabase(opts.dbPath);
   migrate(db);
@@ -190,7 +196,61 @@ export async function createRelayServer(opts: {
   const connStates = new Map<WebSocket, ConnState>();
 
   const server = http.createServer();
+
+  const token = opts.relayGenerationToken;
+  if (typeof token === "string" && token.length > 0) {
+    server.on("request", (req, res) => {
+      if (req.headers.upgrade?.toLowerCase() === "websocket") {
+        return;
+      }
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (url.pathname !== "/__agent-talkie/v1/health") {
+        return;
+      }
+      if (req.method === "GET") {
+        const gen = url.searchParams.get("generation");
+        if (gen === token) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, generation: token }));
+        } else {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false }));
+        }
+        return;
+      }
+      res.writeHead(405, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false }));
+    });
+  }
+
   const wss = new WebSocketServer({ server });
+
+  let idleTimer: NodeJS.Timeout | undefined;
+  function clearIdle(): void {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = undefined;
+    }
+  }
+
+  let scheduleIdle: () => void = () => {};
+  const idleShutdownEnabled =
+    opts.idleShutdownMs !== undefined &&
+    Number.isFinite(opts.idleShutdownMs) &&
+    opts.idleShutdownMs >= 0 &&
+    typeof opts.onIdleShutdown === "function";
+  if (idleShutdownEnabled) {
+    const idleMs = opts.idleShutdownMs as number;
+    const onIdleShutdown = opts.onIdleShutdown as () => void | Promise<void>;
+    scheduleIdle = () => {
+      clearIdle();
+      if (wss.clients.size === 0) {
+        idleTimer = setTimeout(() => {
+          void Promise.resolve(onIdleShutdown()).catch(() => {});
+        }, idleMs);
+      }
+    };
+  }
 
   const spaceGcInterval = setInterval(() => {
     try {
@@ -398,6 +458,7 @@ export async function createRelayServer(opts: {
   };
 
   wss.on("connection", (ws: WebSocket) => {
+    clearIdle();
     connStates.set(ws, {
       negotiatedVersion: null,
       boundSessionId: null,
@@ -408,14 +469,20 @@ export async function createRelayServer(opts: {
     ws.on("close", () => {
       registry.remove(ws);
       connStates.delete(ws);
+      if (wss.clients.size === 0) {
+        scheduleIdle();
+      }
     });
     ws.on("error", () => {
       registry.remove(ws);
       connStates.delete(ws);
+      if (wss.clients.size === 0) {
+        scheduleIdle();
+      }
     });
   });
 
-  const listenPort = opts.port ?? DEFAULT_RELAY_PORT;
+  const listenPort = opts.port !== undefined ? opts.port : DEFAULT_RELAY_PORT;
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(listenPort, LISTEN_HOST, () => {
@@ -428,33 +495,68 @@ export async function createRelayServer(opts: {
   const actualPort =
     typeof addr === "object" && addr !== null ? addr.port : listenPort;
 
+  if (idleShutdownEnabled) {
+    scheduleIdle();
+  }
+
   return {
     url: `ws://${LISTEN_HOST}:${actualPort}`,
     dbPath: opts.dbPath,
     close: () =>
       new Promise((resolve, reject) => {
         clearInterval(spaceGcInterval);
-        for (const client of wss.clients) {
-          client.terminate();
-        }
-        wss.close((err) => {
-          if (err) {
-            reject(err);
-            return;
-          }
+        clearIdle();
+        void (async () => {
           try {
-            db.close();
-          } catch {
-            /* ignore */
-          }
-          server.close((e) => {
-            if (e) {
-              reject(e);
-            } else {
-              resolve();
+            for (const client of wss.clients) {
+              if (client.readyState === WebSocket.OPEN) {
+                client.close(1001, "relay_shutdown");
+              }
             }
-          });
-        });
+            const deadline = Date.now() + RELAY_POLITE_CLOSE_PHASE_MS;
+            while (Date.now() < deadline) {
+              let anyActive = false;
+              for (const c of wss.clients) {
+                if (
+                  c.readyState === WebSocket.OPEN ||
+                  c.readyState === WebSocket.CONNECTING
+                ) {
+                  anyActive = true;
+                  break;
+                }
+              }
+              if (!anyActive) {
+                break;
+              }
+              await new Promise<void>((r) => {
+                setTimeout(r, 25);
+              });
+            }
+            for (const client of wss.clients) {
+              client.terminate();
+            }
+            wss.close((err) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+              try {
+                db.close();
+              } catch {
+                /* ignore */
+              }
+              server.close((e) => {
+                if (e) {
+                  reject(e);
+                } else {
+                  resolve();
+                }
+              });
+            });
+          } catch (e) {
+            reject(e);
+          }
+        })();
       }),
   };
 }
