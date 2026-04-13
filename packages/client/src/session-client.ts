@@ -1,0 +1,240 @@
+import WebSocket from "ws";
+import { z } from "zod";
+import {
+  relayHandshakeAckSchema,
+  relayHandshakeNackSchema,
+  safeParseEnvelope,
+  type Envelope,
+  type SessionRegisterMessage,
+} from "@agent-talkie/protocol";
+
+const DEFAULT_URL = "ws://127.0.0.1:18765";
+const DEFAULT_SUPPORTED_VERSIONS = { minVersion: 1, maxVersion: 1 } as const;
+
+const sessionRegisteredSchema = z.object({
+  type: z.literal("session.registered"),
+  sessionId: z.string().uuid(),
+  reconnectSecret: z.string().min(1),
+  displayName: z.string().min(1),
+});
+
+export type TalkieSessionClientOptions = {
+  url?: string;
+  supportedVersions?: { minVersion: number; maxVersion: number };
+};
+
+export class TalkieSessionClient {
+  private readonly url: string;
+  private readonly supportedVersions: { minVersion: number; maxVersion: number };
+  private ws: WebSocket | null = null;
+  private readonly envelopeHandlers = new Set<(env: Envelope) => void>();
+  private pendingRegister:
+    | {
+        resolve: (v: {
+          sessionId: string;
+          reconnectSecret: string;
+          displayName: string;
+        }) => void;
+        reject: (e: Error) => void;
+      }
+    | undefined;
+
+  constructor(opts?: TalkieSessionClientOptions) {
+    this.url = opts?.url ?? DEFAULT_URL;
+    this.supportedVersions =
+      opts?.supportedVersions ?? { ...DEFAULT_SUPPORTED_VERSIONS };
+  }
+
+  async connect(): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(this.url);
+      this.ws = ws;
+
+      const fail = (err: Error) => {
+        ws.removeAllListeners();
+        if (this.ws === ws) {
+          this.ws = null;
+        }
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+        reject(err);
+      };
+
+      const onError = (e: Error) => {
+        fail(e instanceof Error ? e : new Error(String(e)));
+      };
+
+      const onClose = () => {
+        fail(new Error("WebSocket closed before handshake completed"));
+      };
+
+      const onHandshakeMessage = (data: WebSocket.RawData) => {
+        ws.off("message", onHandshakeMessage);
+        ws.off("close", onClose);
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(String(data)) as unknown;
+        } catch {
+          fail(new Error("Invalid handshake response JSON"));
+          return;
+        }
+
+        const nack = relayHandshakeNackSchema.safeParse(parsed);
+        if (nack.success) {
+          fail(new Error(`Handshake nack: ${nack.data.message}`));
+          return;
+        }
+
+        const ack = relayHandshakeAckSchema.safeParse(parsed);
+        if (!ack.success) {
+          if (
+            typeof parsed === "object" &&
+            parsed !== null &&
+            "type" in parsed &&
+            (parsed as { type: string }).type === "protocol.error"
+          ) {
+            fail(new Error("protocol.error during handshake"));
+          } else {
+            fail(new Error("Invalid handshake response"));
+          }
+          return;
+        }
+
+        ws.off("error", onError);
+        ws.on("error", () => {
+          /* avoid unhandled "error" on long-lived socket */
+        });
+        ws.on("message", (d) => {
+          this.dispatchPostHandshake(d);
+        });
+        resolve();
+      };
+
+      ws.once("error", onError);
+      ws.once("close", onClose);
+      ws.once("open", () => {
+        ws.send(
+          JSON.stringify({
+            type: "handshake",
+            supportedVersions: this.supportedVersions,
+          }),
+        );
+        ws.on("message", onHandshakeMessage);
+      });
+    });
+  }
+
+  private dispatchPostHandshake(data: WebSocket.RawData): void {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(String(data)) as unknown;
+    } catch {
+      return;
+    }
+
+    if (this.pendingRegister) {
+      const reg = sessionRegisteredSchema.safeParse(parsed);
+      if (reg.success) {
+        const p = this.pendingRegister;
+        this.pendingRegister = undefined;
+        p.resolve({
+          sessionId: reg.data.sessionId,
+          reconnectSecret: reg.data.reconnectSecret,
+          displayName: reg.data.displayName,
+        });
+        return;
+      }
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        "type" in parsed &&
+        (parsed as { type: string }).type === "protocol.error"
+      ) {
+        const p = this.pendingRegister;
+        this.pendingRegister = undefined;
+        p.reject(new Error("protocol.error during session.register"));
+        return;
+      }
+      return;
+    }
+
+    const env = safeParseEnvelope(parsed);
+    if (env.success) {
+      for (const h of this.envelopeHandlers) {
+        try {
+          h(env.data);
+        } catch {
+          /* ignore handler errors */
+        }
+      }
+    }
+  }
+
+  async registerSession(
+    input: SessionRegisterMessage["newSession"] & { isHuman?: boolean },
+  ): Promise<{
+    sessionId: string;
+    reconnectSecret: string;
+    displayName: string;
+  }> {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error("WebSocket is not open");
+    }
+    if (this.pendingRegister) {
+      throw new Error("session.register already in progress");
+    }
+
+    return new Promise((resolve, reject) => {
+      this.pendingRegister = { resolve, reject };
+      ws.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: input,
+        }),
+      );
+    });
+  }
+
+  sendEnvelope(envelope: Envelope): void {
+    const ws = this.ws;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(envelope));
+    }
+  }
+
+  onEnvelope(handler: (env: Envelope) => void): void {
+    this.envelopeHandlers.add(handler);
+  }
+
+  close(): void {
+    const pend = this.pendingRegister;
+    this.pendingRegister = undefined;
+    if (pend) {
+      pend.reject(new Error("client closed"));
+    }
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      ws.removeAllListeners();
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
