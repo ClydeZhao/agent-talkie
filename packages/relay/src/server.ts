@@ -245,7 +245,9 @@ export async function createRelayServer(opts: {
       clearIdle();
       if (wss.clients.size === 0) {
         idleTimer = setTimeout(() => {
-          void Promise.resolve(onIdleShutdown()).catch(() => {});
+          void Promise.resolve(onIdleShutdown()).catch((err) => {
+            console.error("onIdleShutdown failed", err);
+          });
         }, idleMs);
       }
     };
