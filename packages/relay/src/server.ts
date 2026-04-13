@@ -17,8 +17,7 @@ import {
   openDatabase,
 } from "@agent-talkie/persistence";
 import type Database from "better-sqlite3";
-import type { RawData } from "ws";
-import { WebSocketServer, type WebSocket } from "ws";
+import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { sendTranscriptCatchUp } from "./catch-up.js";
 import { hashReconnectSecret, verifyReconnectSecret } from "./reconnect-secret.js";
 import { routeEnvelope } from "./router.js";
