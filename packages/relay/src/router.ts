@@ -37,7 +37,7 @@ function hasActiveMembership(
   return row !== undefined;
 }
 
-function pruneTranscriptIfOverCap(
+export function pruneTranscriptIfOverCap(
   db: Database.Database,
   spaceId: string,
 ): void {

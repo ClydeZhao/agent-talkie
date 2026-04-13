@@ -20,6 +20,7 @@ import type Database from "better-sqlite3";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { sendTranscriptCatchUp } from "./catch-up.js";
 import { hashReconnectSecret, verifyReconnectSecret } from "./reconnect-secret.js";
+import { handleCollaborationControl } from "./collaboration-handlers.js";
 import { routeEnvelope } from "./router.js";
 import { SessionRegistry } from "./session-registry.js";
 import {
@@ -116,6 +117,10 @@ export function dispatchValidatedEnvelope(
       type: "space.left",
       spaceId: out.spaceId,
     });
+    return;
+  }
+
+  if (handleCollaborationControl(ctx, envelope)) {
     return;
   }
 
