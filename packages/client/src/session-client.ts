@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import WebSocket from "ws";
 import { z } from "zod";
 import {
@@ -27,7 +28,15 @@ export class TalkieSessionClient {
   private readonly url: string;
   private readonly supportedVersions: { minVersion: number; maxVersion: number };
   private ws: WebSocket | null = null;
+  private registeredSessionId: string | null = null;
   private readonly envelopeHandlers = new Set<(env: Envelope) => void>();
+  private pendingJoin:
+    | {
+        resolve: (v: { spaceId: string; slug: string }) => void;
+        reject: (e: Error) => void;
+        slug: string;
+      }
+    | undefined;
   private pendingRegister:
     | {
         resolve: (v: {
@@ -150,6 +159,7 @@ export class TalkieSessionClient {
       if (reg.success) {
         const p = this.pendingRegister;
         this.pendingRegister = undefined;
+        this.registeredSessionId = reg.data.sessionId;
         p.resolve({
           sessionId: reg.data.sessionId,
           reconnectSecret: reg.data.reconnectSecret,
@@ -169,6 +179,26 @@ export class TalkieSessionClient {
         return;
       }
       return;
+    }
+
+    if (this.pendingJoin) {
+      const pj = this.pendingJoin;
+      if (typeof parsed === "object" && parsed !== null && "type" in parsed) {
+        const t = (parsed as { type: string }).type;
+        if (t === "space.joined") {
+          const spaceId = (parsed as { spaceId?: unknown }).spaceId;
+          if (typeof spaceId === "string") {
+            this.pendingJoin = undefined;
+            pj.resolve({ spaceId, slug: pj.slug });
+            return;
+          }
+        }
+        if (t === "protocol.error") {
+          this.pendingJoin = undefined;
+          pj.reject(new Error(JSON.stringify(parsed)));
+          return;
+        }
+      }
     }
 
     const env = safeParseEnvelope(parsed);
@@ -209,6 +239,37 @@ export class TalkieSessionClient {
     });
   }
 
+  async joinSpace(args: {
+    slug: string;
+    idempotencyKey: string;
+  }): Promise<{ spaceId: string; slug: string }> {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error("WebSocket is not open");
+    }
+    if (this.registeredSessionId === null) {
+      throw new Error("joinSpace before registerSession");
+    }
+    if (this.pendingJoin) {
+      throw new Error("space.join already in progress");
+    }
+
+    return new Promise((resolve, reject) => {
+      this.pendingJoin = { resolve, reject, slug: args.slug };
+      ws.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: this.registeredSessionId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: args.slug },
+          idempotencyKey: args.idempotencyKey,
+        }),
+      );
+    });
+  }
+
   sendEnvelope(envelope: Envelope): void {
     const ws = this.ws;
     if (ws?.readyState === WebSocket.OPEN) {
@@ -226,6 +287,12 @@ export class TalkieSessionClient {
     if (pend) {
       pend.reject(new Error("client closed"));
     }
+    const pj = this.pendingJoin;
+    this.pendingJoin = undefined;
+    if (pj) {
+      pj.reject(new Error("client closed"));
+    }
+    this.registeredSessionId = null;
     const ws = this.ws;
     this.ws = null;
     if (ws) {
