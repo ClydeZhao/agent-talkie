@@ -2,6 +2,8 @@ import type Database from "better-sqlite3";
 import type { Envelope } from "@agent-talkie/protocol";
 import {
   appendTranscriptEntry,
+  getOrchestratorSessionId,
+  getSessionById,
   listTranscriptEntriesAfterSeq,
 } from "@agent-talkie/persistence";
 import type { WebSocket } from "ws";
@@ -12,6 +14,7 @@ const SKIP_TRANSCRIPT_TYPES = new Set([
   "space.join",
   "space.leave",
   "transcript.query",
+  "metadata.query",
 ]);
 
 function sendJson(ws: WebSocket, payload: unknown): void {
@@ -134,6 +137,38 @@ export function routeEnvelope(ctx: {
   }
 
   const wire = JSON.stringify(envelope);
+
+  const senderSession = getSessionById(db, envelope.sessionId);
+  if (!senderSession) {
+    sendJson(senderWs, { type: "protocol.error", error: "invalid_envelope" });
+    return;
+  }
+
+  if (
+    envelope.kind === "conversation" &&
+    envelope.to === undefined &&
+    senderSession.isHuman
+  ) {
+    const orch = getOrchestratorSessionId(db, spaceId);
+    if (orch === null) {
+      sendJson(senderWs, { type: "protocol.error", error: "no_orchestrator" });
+      return;
+    }
+    const orchWs = getSocketForSession(orch);
+    if (!orchWs || orchWs.readyState !== orchWs.OPEN) {
+      sendJson(senderWs, {
+        type: "protocol.error",
+        error: "orchestrator_offline",
+      });
+      return;
+    }
+    if (!hasActiveMembership(db, spaceId, orch)) {
+      sendJson(senderWs, { type: "protocol.error", error: "not_in_space" });
+      return;
+    }
+    orchWs.send(wire);
+    return;
+  }
 
   if (envelope.to) {
     if (!hasActiveMembership(db, spaceId, envelope.to)) {
