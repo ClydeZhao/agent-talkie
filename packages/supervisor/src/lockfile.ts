@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 const GENERATION_RE = /^[0-9a-f]{32}$/;
@@ -36,19 +36,27 @@ function isValidLockBody(value: unknown): value is RelayLock {
 
 export function readRelayLock(dataDir: string): RelayLock | undefined {
   const lockPath = join(dataDir, "relay.lock");
-  if (!existsSync(lockPath)) {
-    return undefined;
-  }
+  let raw: string;
   try {
-    const raw = readFileSync(lockPath, "utf8");
-    const parsed: unknown = JSON.parse(raw) as unknown;
-    if (!isValidLockBody(parsed)) {
+    raw = readFileSync(lockPath, "utf8");
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") {
       return undefined;
     }
-    return parsed;
+    throw e;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     return undefined;
   }
+  if (!isValidLockBody(parsed)) {
+    return undefined;
+  }
+  return parsed;
 }
 
 export function removeRelayLock(dataDir: string): void {
