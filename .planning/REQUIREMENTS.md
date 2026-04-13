@@ -47,16 +47,16 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **MSG-01**: Sessions can send messages directly to another session in the same space
 - [ ] **MSG-02**: Sessions can send messages addressed to all sessions in the same space
 - [ ] **MSG-03**: Multi-turn conversations are supported — sessions can continue back-and-forth exchanges, not just one-shot dispatch
-- [ ] **MSG-04**: Human messages to the space route to the orchestrator session by default
-- [ ] **MSG-05**: Human can address a specific session directly, bypassing orchestrator default
-- [ ] **MSG-06**: Orchestrator can assign work to sessions, follow up on progress, and consolidate questions for the human
+- [x] **MSG-04**: Human messages to the space route to the orchestrator session by default
+- [x] **MSG-05**: Human can address a specific session directly, bypassing orchestrator default
+- [x] **MSG-06**: Orchestrator can assign work to sessions, follow up on progress, and consolidate questions for the human
 
 ### Collaboration Metadata
 
-- [ ] **META-01**: Each session has layer-owned collaboration metadata: role, focus, progress status, and blocked state
-- [ ] **META-02**: Metadata is visible to other sessions in the same space and to observing humans
-- [ ] **META-03**: Status-like fields (activity, blocked state, last update) can refresh automatically; semantic fields (role, display name, focus) are human-controlled
-- [ ] **META-04**: Metadata updates are propagated to space participants via the relay
+- [x] **META-01**: Each session has layer-owned collaboration metadata: role, focus, progress status, and blocked state
+- [x] **META-02**: Metadata is visible to other sessions in the same space and to observing humans
+- [x] **META-03**: Status-like fields (activity, blocked state, last update) can refresh automatically; semantic fields (role, display name, focus) are human-controlled
+- [x] **META-04**: Metadata updates are propagated to space participants via the relay
 
 ### Multi-Human
 
@@ -156,13 +156,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MSG-01 | 2 | Pending |
 | MSG-02 | 2 | Pending |
 | MSG-03 | 2 | Pending |
-| MSG-04 | 4 | Pending |
-| MSG-05 | 4 | Pending |
-| MSG-06 | 4 | Pending |
-| META-01 | 4 | Pending |
-| META-02 | 4 | Pending |
-| META-03 | 4 | Pending |
-| META-04 | 4 | Pending |
+| MSG-04 | 4 | Complete |
+| MSG-05 | 4 | Complete |
+| MSG-06 | 4 | Complete |
+| META-01 | 4 | Complete |
+| META-02 | 4 | Complete |
+| META-03 | 4 | Complete |
+| META-04 | 4 | Complete |
 | ADAPT-01 | 4 | Pending |
 | ADAPT-02 | 5 | Pending |
 | ADAPT-03 | 4 | Pending |
