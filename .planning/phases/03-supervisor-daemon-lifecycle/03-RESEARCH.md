@@ -257,16 +257,19 @@ Planner note: D-11 asks for **close frames** before terminate where possible—c
 | A2 | Liveness check combines PID + port connectivity + token match | Stale lock pattern | Rare false stale or false live |
 | A3 | `terminate()` on shutdown is acceptable for v1; optional upgrade to close frames later | Code Examples | Clients see abnormal close |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Exact IPC schema** — What fields beyond `port` and `token` (e.g. `dbPath`, `pid`, `version`)?
    - *Recommendation:* Version the message (`v:1`) for forward compatibility (discretion).
+   - RESOLVED: Plans use `{ type: "relay.ready", port, token, pid, v: 1 }` — agent's discretion per CONTEXT.
 
 2. **`relay stop` semantics** — SIGTERM to PID from lockfile only, or also port-based discovery?
    - *Recommendation:* PID from lock + fallback to port owner [ASSUMED].
+   - RESOLVED: Plan 03-02 implements `stopRelay()` using PID from lockfile. Port-based discovery is not needed for v1.
 
 3. **Windows** — Full support in v1 or document Unix-first?
    - *Recommendation:* Use `env-paths` and test `fork`/`kill` behavior early if Windows is in scope [ASSUMED].
+   - RESOLVED: Unix-first for v1. `env-paths` handles platform data dirs. Windows signal/fork behavior is a known risk but not blocking for initial release.
 
 ## Environment Availability
 

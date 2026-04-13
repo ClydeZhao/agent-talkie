@@ -14,7 +14,7 @@ The local relay daemon starts automatically when needed (on-demand spawn), enfor
 ## Implementation Decisions
 
 ### Daemon Spawn Strategy
-- **D-01:** Both CLI manual control and client auto-spawn. Auto-spawn is the default happy path — when a session client tries to connect and finds no relay, it spawns one automatically. CLI exposes explicit start/stop/status for inspection, recovery, and troubleshooting.
+- **D-01:** Both CLI manual control and client auto-spawn. Auto-spawn is the default happy path — when a session client tries to connect and finds no relay, it spawns one automatically. CLI exposes explicit start/stop/status for inspection, recovery, and troubleshooting. **Phase 3 scope:** build the `ensureRelayRunning()` supervisor mechanism and expose it via CLI; actual session-client wiring (calling `ensureRelayRunning` before WebSocket connect) is deferred to Phase 4 adapters, which will import and use the supervisor library.
 - **D-02:** Spawn mechanism is `child_process.fork()` with a short IPC handshake. The forked relay process confirms readiness via IPC message after binding its port, then the parent disconnects the IPC channel and the relay continues as an independent process.
 - **D-03:** Readiness signal is IPC-based — relay emits a structured ready message (including bound port) via IPC after successfully binding. The spawning client reads this before detaching, ensuring the relay is accepting connections before the client proceeds.
 - **D-04:** No postinstall persistent daemons. No system-level service manager dependency. The relay is purely on-demand: spawned when needed, shuts down when idle.
