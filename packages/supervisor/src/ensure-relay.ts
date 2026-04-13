@@ -197,7 +197,11 @@ export async function stopRelay(
 
   try {
     process.kill(lock.pid, signal);
-  } catch {
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException;
+    if (err.code === "ESRCH") {
+      return { stopped: true, pid: lock.pid };
+    }
     return { stopped: false, reason: "kill_failed" };
   }
 
