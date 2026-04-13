@@ -79,6 +79,14 @@ Plans:
 
 **Requirements:** MSG-04, MSG-05, MSG-06, META-01, META-02, META-03, META-04, ADAPT-01, ADAPT-03, ADAPT-04
 
+**Plans:** 1/3 plans executed
+
+Plans:
+
+- [x] 04-01-PLAN.md — SQLite + protocol: is_human, orchestrator column, collaboration tables, collaboration-wire Zod, persistence snapshot/upsert (MSG/META foundation)
+- [ ] 04-02-PLAN.md — Relay: human→orchestrator routing, collaboration control handlers, transcript rules, vitest routing matrix (MSG-04–MSG-06, META-01–META-04)
+- [ ] 04-03-PLAN.md — @agent-talkie/client, @agent-talkie/adapter-stdio, docs/adapter-ingress.md (ADAPT-01, ADAPT-03, ADAPT-04)
+
 **Success criteria:**
 
 1. Human-originated messages default to the orchestrator session; humans can target a specific session; orchestrator can assign, follow up, and consolidate questions per protocol.
