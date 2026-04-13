@@ -29,7 +29,7 @@ Sessions from different runtimes can collaborate directly through a shared space
 - [ ] Local context stays local unless deliberately shared
 - [ ] Peer-first question resolution before human escalation
 - [ ] Multiple humans can participate, each bringing their own local agent sessions
-- [ ] Automatic local relay daemon lifecycle
+- [x] Automatic local relay daemon lifecycle — Validated in Phase 3 (ensureRelayRunning, fork+IPC, lockfile, idle shutdown, CLI)
 - [ ] Adapter ingress patterns for connecting native runtimes
 
 ### Out of Scope
@@ -73,9 +73,9 @@ The default architecture is relay-based, local-first, zero-external-services. Th
 |----------|-----------|---------|
 | WebSocket relay as canonical transport | Unifies local and remote under one protocol; avoids divergent transport semantics | Validated in Phase 2 (createRelayServer + handshake + routing) |
 | SQLite for collaboration metadata | Zero-external-services constraint; sufficient for local-first with natural extension | Validated in Phase 2 (spaces, memberships, transcript all in SQLite) |
-| Zero external services as default | Product must feel lightweight and immediate; no infrastructure prerequisites | — Pending |
+| Zero external services as default | Product must feel lightweight and immediate; no infrastructure prerequisites | Validated in Phase 3 (npm install only, no external services) |
 | One session per space (v1) | Simplify initial implementation; multi-space deferred | Enforced in Phase 2 (already_in_space error on second join) |
-| Relay daemon lifecycle independent of participants | First session must not be permanent host; relay must survive participant churn | — Pending |
+| Relay daemon lifecycle independent of participants | First session must not be permanent host; relay must survive participant churn | Validated in Phase 3 (fork+disconnect, lockfile, idle shutdown) |
 | Adapter ingress separate from core transport | Runtime-specific adapters (stdio bridge) are edge concerns, not core architecture | — Pending |
 | Versioned envelope with Zod + JSON Schema | Type safety for TypeScript consumers; JSON Schema export for non-TS consumers; schema evolution built in | Validated in Phase 1 |
 
@@ -97,4 +97,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-10 after Phase 2 completion*
+*Last updated: 2026-04-13 after Phase 3 completion*
