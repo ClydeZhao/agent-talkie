@@ -9,6 +9,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./daemon": {
+      "types": "./dist/daemon.d.ts",
+      "import": "./dist/daemon.js",
+      "default": "./dist/daemon.js"
     }
   },
   "files": ["dist"],
@@ -20,6 +25,7 @@
   "dependencies": {
     "@agent-talkie/persistence": "0.0.0",
     "@agent-talkie/protocol": "0.0.0",
+    "env-paths": "4.0.0",
     "ws": "^8.20.0"
   },
   "devDependencies": {
