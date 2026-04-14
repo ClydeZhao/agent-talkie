@@ -9,6 +9,24 @@ import {
   runTranscriptCommand,
   runWhoCommand,
 } from "./oversight/static-commands.js";
+import { runWatch } from "./oversight/watch.js";
+
+function parseWatchRefreshMs(raw: string | undefined): number {
+  const defaultMs = 1000;
+  if (raw === undefined || raw === "") {
+    return defaultMs;
+  }
+  const n = parseInt(String(raw), 10);
+  if (!Number.isFinite(n)) {
+    console.error("[talkie-watch] --refresh-ms must be a valid integer");
+    process.exit(1);
+  }
+  if (n > 60000) {
+    console.error("[talkie-watch] --refresh-ms must be at most 60000");
+    process.exit(1);
+  }
+  return Math.min(60000, Math.max(1, n));
+}
 
 function handleError(err: unknown): void {
   console.error(err);
@@ -146,6 +164,26 @@ program
   .action(async (opts: { slug: string }) => {
     try {
       await runWhoCommand(opts.slug);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("watch")
+  .description(
+    "Live split-pane oversight (participants + timeline). Requires relay and space.",
+  )
+  .requiredOption("--slug <slug>", "space slug")
+  .option(
+    "--refresh-ms <n>",
+    "full redraw interval in ms (default 1000, max 60000)",
+    "1000",
+  )
+  .action(async (opts: { slug: string; refreshMs: string }) => {
+    try {
+      const refreshMs = parseWatchRefreshMs(opts.refreshMs);
+      await runWatch({ slug: opts.slug, refreshMs });
     } catch (e) {
       handleError(e);
     }
