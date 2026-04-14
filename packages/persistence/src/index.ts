@@ -43,3 +43,11 @@ export {
   listTranscriptTailBySeq,
   nextRelaySeq,
 } from "./repositories/transcript.js";
+export {
+  getOversightSpaceSummaryBySlug,
+  listOversightBlockedSessionsBySlug,
+  listOversightTranscriptTailBySlug,
+  type OversightBlockedSession,
+  type OversightMember,
+  type OversightSpaceSummary,
+} from "./repositories/oversight.js";
