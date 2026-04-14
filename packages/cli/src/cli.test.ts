@@ -33,10 +33,11 @@ describe("talkie CLI", () => {
     }
   });
 
-  it("session list prints stub", () => {
+  it("session list redirects to who --slug", () => {
     const r = runCli(["session", "list"]);
     expect(r.status).toBe(0);
-    expect(r.stdout.trim()).toBe("not implemented (Phase 4)");
+    expect(r.stdout.trim()).toBe("");
+    expect(r.stderr.trim()).toBe("Use: talkie who --slug <slug>");
   });
 
   it("relay start then ping with isolated data dir", () => {

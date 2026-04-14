@@ -4,6 +4,11 @@ import {
   getRelayStatus,
   stopRelay,
 } from "@agent-talkie/supervisor";
+import {
+  runSpaceStatus,
+  runTranscriptCommand,
+  runWhoCommand,
+} from "./oversight/static-commands.js";
 
 function handleError(err: unknown): void {
   console.error(err);
@@ -88,9 +93,62 @@ program
 const sessionCmd = program.command("session");
 sessionCmd
   .command("list")
-  .description("List sessions (stub)")
+  .description("List sessions (redirect)")
   .action(() => {
-    console.log("not implemented (Phase 4)");
+    console.error("Use: talkie who --slug <slug>");
+  });
+
+const spaceCmd = program.command("space");
+spaceCmd
+  .command("status")
+  .description("Print oversight JSON summary for a space (includes ownerSessionId)")
+  .requiredOption("--slug <slug>", "space slug")
+  .action(async (opts: { slug: string }) => {
+    try {
+      await runSpaceStatus(opts.slug);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("transcript")
+  .description(
+    "Print recent transcript entries as JSON. Does not inject messages into agent sessions.",
+  )
+  .requiredOption("--slug <slug>", "space slug")
+  .option(
+    "--limit <n>",
+    "max entries (default 50, max 500)",
+    (raw: string) => {
+      const n = parseInt(String(raw), 10);
+      if (Number.isNaN(n)) {
+        return 50;
+      }
+      return Math.min(500, Math.max(1, n));
+    },
+    50,
+  )
+  .action(async (opts: { slug: string; limit: number }) => {
+    try {
+      await runTranscriptCommand(opts.slug, opts.limit);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("who")
+  .description(
+    "List space members as TSV (session_id, display_name, is_human, role, progress)",
+  )
+  .requiredOption("--slug <slug>", "space slug")
+  .action(async (opts: { slug: string }) => {
+    try {
+      await runWhoCommand(opts.slug);
+    } catch (e) {
+      handleError(e);
+    }
   });
 
 await program.parseAsync(process.argv);

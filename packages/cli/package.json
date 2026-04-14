@@ -13,6 +13,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@agent-talkie/client": "0.0.0",
+    "@agent-talkie/persistence": "0.0.0",
+    "@agent-talkie/protocol": "0.0.0",
     "@agent-talkie/supervisor": "0.0.0",
     "commander": "14.0.3"
   },
