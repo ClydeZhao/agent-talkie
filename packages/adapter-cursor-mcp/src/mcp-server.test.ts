@@ -12,12 +12,11 @@ describe("createMcpServer", () => {
     vi.spyOn(McpServer.prototype, "registerTool").mockImplementation(function (
       this: McpServer,
       name: string,
-      ...rest: Parameters<McpServer["registerTool"]> extends [string, infer C, infer H]
-        ? [C, H]
-        : never
+      config: Parameters<McpServer["registerTool"]>[1],
+      cb: Parameters<McpServer["registerTool"]>[2],
     ) {
       registeredToolNames.push(name);
-      return originalRegisterTool.call(this, name, ...rest);
+      return originalRegisterTool.call(this, name, config, cb);
     });
   });
 
