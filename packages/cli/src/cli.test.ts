@@ -40,6 +40,43 @@ describe("talkie CLI", () => {
     expect(r.stderr.trim()).toBe("Use: talkie who --slug <slug>");
   });
 
+  it("oversight commands on fresh data dir return 'space not found' without SqliteError", () => {
+    const freshDir = mkdtempSync(
+      path.join(os.tmpdir(), "agent-talkie-cli-oversight-"),
+    );
+    const env = { AGENT_TALKIE_DATA_DIR: freshDir };
+
+    try {
+      const who = runCli(["who", "--slug", "fresh-oversight-slug"], env);
+      expect(who.status).toBe(1);
+      expect(who.stderr).toContain("space not found: fresh-oversight-slug");
+      expect(who.stderr).not.toContain("SqliteError");
+      expect(who.stderr).not.toContain("no such table");
+
+      const status = runCli(
+        ["space", "status", "--slug", "fresh-oversight-slug"],
+        env,
+      );
+      expect(status.status).toBe(1);
+      expect(status.stderr).toContain("space not found: fresh-oversight-slug");
+      expect(status.stderr).not.toContain("SqliteError");
+      expect(status.stderr).not.toContain("no such table");
+
+      const transcript = runCli(
+        ["transcript", "--slug", "fresh-oversight-slug", "--limit", "5"],
+        env,
+      );
+      expect(transcript.status).toBe(1);
+      expect(transcript.stderr).toContain(
+        "space not found: fresh-oversight-slug",
+      );
+      expect(transcript.stderr).not.toContain("SqliteError");
+      expect(transcript.stderr).not.toContain("no such table");
+    } finally {
+      rmSync(freshDir, { recursive: true, force: true });
+    }
+  });
+
   it("relay start then ping with isolated data dir", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-"));
     const env = {
