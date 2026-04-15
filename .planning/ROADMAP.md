@@ -134,8 +134,8 @@ Plans:
 
 Plans:
 
-- [ ] 06-01-PLAN.md — Relay DB：`mkdir` + `migrate` + 新鲜数据目录 Vitest 回归（OVER-01, CLI-03）
-- [ ] 06-02-PLAN.md — 自 CLI 移除 `@agent-talkie/protocol`（package.json / pretest / tsup / lockfile）（CLI-03）
+- [x] 06-01-PLAN.md — Relay DB：`mkdir` + `migrate` + 新鲜数据目录 Vitest 回归（OVER-01, CLI-03）
+- [x] 06-02-PLAN.md — 自 CLI 移除 `@agent-talkie/protocol`（package.json / pretest / tsup / lockfile）（CLI-03）
 
 **Success criteria:**
 
