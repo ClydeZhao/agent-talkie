@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A local-first collaboration layer that connects independently running coding-agent sessions across different runtimes (Cursor, Claude Code, Codex, etc.) into a shared space where they can talk, coordinate, and unblock each other — without forcing the human to be the transport layer.
+A local-first collaboration layer that connects independently running coding-agent sessions across different runtimes (Cursor, Claude Code, Codex, etc.) into a shared space where they can talk, coordinate, and unblock each other — without forcing the human to be the transport layer. Shipped as a monorepo of 9 npm packages with a CLI, two runtime adapters, and a live oversight terminal.
 
 ## Core Value
 
@@ -12,25 +12,28 @@ Sessions from different runtimes can collaborate directly through a shared space
 
 ### Validated
 
-- [x] Versioned message envelope with Zod validation and JSON Schema export — Validated in Phase 1
-- [x] Idempotency where the protocol requires it — Validated in Phase 1
-- [x] Named sessions with stable identity join a shared collaboration space — Validated in Phase 2 (slug-based join, membership persistence)
-- [x] Direct session-to-session messaging across runtimes via relay — Validated in Phase 2 (direct + fan-out routing)
-- [x] Multi-turn conversations, not just one-shot dispatch — Validated in Phase 2 (integration test proves 3+ round-trips)
-- [x] Explicit opt-in participation (join/invite, not ambient discovery) — Validated in Phase 2 (space.join required before routing)
-- [x] WebSocket-based relay as canonical core transport — Validated in Phase 2 (createRelayServer on localhost)
-- [x] SQLite-backed collaboration metadata and state — Validated in Phase 2 (spaces, memberships, transcript in SQLite with WAL)
-- [x] Adapter ingress patterns for connecting native runtimes — Validated in Phase 4 (`@agent-talkie/client`, `@agent-talkie/adapter-stdio`, `docs/adapter-ingress.md`)
+- ✓ Versioned message envelope with Zod validation and JSON Schema export — v1.0
+- ✓ Idempotency where the protocol requires it — v1.0
+- ✓ Named sessions with stable identity join a shared collaboration space — v1.0
+- ✓ Direct session-to-session messaging across runtimes via relay — v1.0
+- ✓ Multi-turn conversations, not just one-shot dispatch — v1.0
+- ✓ Explicit opt-in participation (join/invite, not ambient discovery) — v1.0
+- ✓ WebSocket-based relay as canonical core transport — v1.0
+- ✓ SQLite-backed collaboration metadata and state — v1.0
+- ✓ Adapter ingress patterns for connecting native runtimes — v1.0
+- ✓ Automatic local relay daemon lifecycle — v1.0
+- ✓ Orchestrator routing (human→orchestrator default, direct targeting, task assignment) — v1.0
+- ✓ Collaboration metadata (role, focus, progress, blocked) owned by the layer — v1.0
+- ✓ Human-visible oversight surface (CLI status, transcript, watch) — v1.0
+- ✓ Multiple humans can participate, each bringing their own local agent sessions — v1.0
 
 ### Active
 
-- [ ] Orchestrator role that coordinates work, follows up, and escalates to humans
-- [ ] Collaboration metadata (role, focus, progress) owned by the collaboration layer
-- [ ] Human-visible surface for oversight and intervention
-- [ ] Local context stays local unless deliberately shared
-- [ ] Peer-first question resolution before human escalation
-- [ ] Multiple humans can participate, each bringing their own local agent sessions
-- [x] Automatic local relay daemon lifecycle — Validated in Phase 3 (ensureRelayRunning, fork+IPC, lockfile, idle shutdown, CLI)
+- [ ] Token/TLS/tunnel authentication for non-loopback relay connections
+- [ ] Invite-based space membership for cross-machine collaboration
+- [ ] Proactive orchestrator follow-ups and stalled-thread recovery
+- [ ] Web-based collaboration dashboard with richer oversight than CLI
+- [ ] Multi-space per session
 
 ### Out of Scope
 
@@ -46,17 +49,20 @@ Sessions from different runtimes can collaborate directly through a shared space
 
 ## Context
 
-The problem is not agent quality. Each runtime (Cursor, Claude Code, Codex) is strong inside its own product but isolated outside of it. The human becomes the bridge — copying requests, pasting answers, relaying follow-ups, repeating context, tracking who is blocked. This is wasted work.
+Shipped v1.0 with ~8,100 LOC TypeScript across 92 source files in 9 packages.
 
-agent-talkie takes a different approach: connect running sessions into a shared collaboration layer. Sessions keep their native runtime and local context but can talk directly. One session can coordinate. The human observes and intervenes without becoming the transport layer.
+Tech stack: Node.js, TypeScript, Zod 4, better-sqlite3, ws (WebSocket), Vitest.
 
-This is not another same-runtime subagent system. It is an interoperability layer across independently running native sessions. The pattern works for one person using several tools and extends naturally to a team.
+Packages: `@agent-talkie/protocol`, `@agent-talkie/persistence`, `@agent-talkie/relay`, `@agent-talkie/supervisor`, `@agent-talkie/client`, `@agent-talkie/adapter-stdio`, `@agent-talkie/adapter-codex`, `@agent-talkie/adapter-cursor-mcp`, `@agent-talkie/cli`.
 
-The default architecture is relay-based, local-first, zero-external-services. The canonical core transport is WebSocket. Local default is relay on localhost. Remote extension uses the same protocol with relay deployed elsewhere. Adapter-specific ingress (stdio bridge, etc.) is an adapter-edge concern.
+Architecture: relay-based, local-first, zero-external-services. WebSocket relay on localhost as default. Adapters are edge concerns connecting native runtimes via the shared client. SQLite (WAL mode) stores spaces, sessions, memberships, transcript, and collaboration metadata.
 
-**Simplification note:** A session can only join one space at a time. Multi-space support is deferred.
+v1 simplification: one session per space. Multi-space deferred.
 
-**Product idea for later:** Web UI with session finder — locate a session and its hosting terminal highlights or rings, similar to Apple Watch finding iPhone.
+Known tech debt from v1.0:
+- Phase 4 lacks formal VERIFICATION.md (10 requirements verified via code/tests only)
+- Phase 5 human UAT for live adapter concurrency not operator-confirmed
+- Peer-first question resolution is architecturally possible but not explicitly enforced
 
 ## Constraints
 
@@ -71,13 +77,16 @@ The default architecture is relay-based, local-first, zero-external-services. Th
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| WebSocket relay as canonical transport | Unifies local and remote under one protocol; avoids divergent transport semantics | Validated in Phase 2 (createRelayServer + handshake + routing) |
-| SQLite for collaboration metadata | Zero-external-services constraint; sufficient for local-first with natural extension | Validated in Phase 2 (spaces, memberships, transcript all in SQLite) |
-| Zero external services as default | Product must feel lightweight and immediate; no infrastructure prerequisites | Validated in Phase 3 (npm install only, no external services) |
-| One session per space (v1) | Simplify initial implementation; multi-space deferred | Enforced in Phase 2 (already_in_space error on second join) |
-| Relay daemon lifecycle independent of participants | First session must not be permanent host; relay must survive participant churn | Validated in Phase 3 (fork+disconnect, lockfile, idle shutdown) |
-| Adapter ingress separate from core transport | Runtime-specific adapters (stdio bridge) are edge concerns, not core architecture | Validated in Phase 4 (shared client + stdio adapter + docs) |
-| Versioned envelope with Zod + JSON Schema | Type safety for TypeScript consumers; JSON Schema export for non-TS consumers; schema evolution built in | Validated in Phase 1 |
+| WebSocket relay as canonical transport | Unifies local and remote under one protocol; avoids divergent transport semantics | ✓ Good — validated in v1.0 |
+| SQLite for collaboration metadata | Zero-external-services constraint; sufficient for local-first with natural extension | ✓ Good — WAL mode handles concurrent adapter access well |
+| Zero external services as default | Product must feel lightweight and immediate; no infrastructure prerequisites | ✓ Good — npm install is all that's needed |
+| One session per space (v1) | Simplify initial implementation; multi-space deferred | ✓ Good — keeps routing simple; revisit in v2 |
+| Relay daemon lifecycle independent of participants | First session must not be permanent host; relay must survive participant churn | ✓ Good — fork+disconnect pattern works reliably |
+| Adapter ingress separate from core transport | Runtime-specific adapters (stdio bridge) are edge concerns, not core architecture | ✓ Good — Codex + Cursor MCP adapters prove the pattern |
+| Versioned envelope with Zod + JSON Schema | Type safety for TypeScript consumers; JSON Schema export for non-TS consumers; schema evolution built in | ✓ Good — Zod 4 toJSONSchema works well |
+| Content-Length framing for stdio adapters | Simple, HTTP-like framing for stdin/stdout bridge; bounded queues prevent memory growth | ✓ Good — adopted by both adapter-stdio and adapter-codex |
+| Space owner model for multi-human | First human to join owns the space; orchestrator controls gated by ownership | ✓ Good — clear permission semantics without auth infra |
+| SQLite-backed oversight reads | CLI reads directly from relay DB for who/transcript/status instead of WebSocket queries | ✓ Good — works offline; auto-migrate on fresh data dir after Phase 6 fix |
 
 ## Evolution
 
@@ -97,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-13 after Phase 4 plan 04-03 (client + stdio adapter)*
+*Last updated: 2026-04-15 after v1.0 milestone*

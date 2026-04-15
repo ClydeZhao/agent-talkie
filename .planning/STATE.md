@@ -1,9 +1,9 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: milestone
-status: Milestone complete
-last_updated: "2026-04-15T09:08:47.092Z"
+milestone_name: MVP
+status: Milestone v1.0 shipped
+last_updated: "2026-04-15"
 progress:
   total_phases: 6
   completed_phases: 6
@@ -12,16 +12,23 @@ progress:
   percent: 100
 ---
 
-**Position:** Phase 04 **verified complete**. All 3 plans executed, 10 requirements checked off, 48/48 tests pass, build clean. Next: **Phase 05** — cross-runtime proof & human oversight.
+## Project Reference
 
-**Phase 04 shipped:**
+See: .planning/PROJECT.md (updated 2026-04-15)
 
-- `@agent-talkie/client` — shared WebSocket session client
-- `@agent-talkie/adapter-stdio` — Content-Length framing, bounded queue, CLI
-- `collaboration-handlers` — orchestrator routing, designation, task.assign, metadata.patch/query
-- Migration 003 — `is_human`, orchestrator column, collaboration tables
-- `docs/adapter-ingress.md` — adapter ingress documentation
+**Core value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
+**Current focus:** Planning next milestone
 
-**Decisions this session:** ADAPT-01, ADAPT-03, ADAPT-04 marked complete in REQUIREMENTS.md. Workspace list is explicit (includes `packages/client`, `packages/adapter-stdio`). Stdio adapter uses env `TALKIE_STDIO_MAX_QUEUE` (default 100) and optional `TALKIE_STDIO_DISPLAY_NAME` / `TALKIE_STDIO_RUNTIME` / `TALKIE_STDIO_WORKSPACE` for `session.register`.
+## Milestone v1.0 — Shipped
 
-*Last updated: 2026-04-13 after Phase 04 verification*
+All 6 phases complete. 20 plans, 51 tasks, 44/44 requirements addressed. Tagged `v1.0`.
+
+Archived to `.planning/milestones/`:
+- `v1.0-ROADMAP.md`
+- `v1.0-REQUIREMENTS.md`
+- `v1.0-MILESTONE-AUDIT.md`
+- `v1.0-phases/` (all phase directories)
+
+## Next Steps
+
+Run `/gsd-new-milestone` to start v1.1 — defines new requirements, research, and roadmap.
