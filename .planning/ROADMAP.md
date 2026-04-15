@@ -3,7 +3,7 @@
 **Version:** 1.0
 **Created:** 2026-04-10
 **Granularity:** Coarse
-**Phases:** 5
+**Phases:** 6
 **Requirements covered:** 44/44
 
 ## Milestone 1: agent-talkie v1
@@ -122,4 +122,21 @@ Plans:
 
 ---
 
-*Roadmap derived from `.planning/REQUIREMENTS.md` and `.planning/research/SUMMARY.md` (coarse five-phase structure).*
+### Phase 6: Oversight CLI resilience & cleanup
+
+**Goal:** Oversight CLI commands (`who`, `transcript`, `space status`) work correctly on a fresh data directory by ensuring the relay database is initialized before querying, and unused dependencies are removed.
+
+**Requirements:** OVER-01, CLI-03
+
+**Gap Closure:** Closes integration and flow gaps from v1.0 milestone audit
+
+**Success criteria:**
+
+1. `talkie who --slug <slug>` on a fresh data directory (no prior relay start) does not crash with `SqliteError: no such table` — either auto-starts the relay or runs migrations before querying.
+2. `talkie transcript --slug <slug>` and `talkie space status --slug <slug>` behave the same as above.
+3. Unused `@agent-talkie/protocol` dependency removed from CLI `package.json`.
+4. All existing CLI tests continue to pass.
+
+---
+
+*Roadmap derived from `.planning/REQUIREMENTS.md` and `.planning/research/SUMMARY.md`.*

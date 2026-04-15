@@ -25,28 +25,28 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Relay & Transport
 
-- [ ] **RELAY-01**: WebSocket relay server accepts connections, validates envelopes, and routes messages to addressed recipients
-- [ ] **RELAY-02**: Relay performs authoritative Zod validation on all inbound envelopes before routing
-- [ ] **RELAY-03**: Messages are routed by explicit session addressing, not broadcast to all connected sessions
+- [x] **RELAY-01**: WebSocket relay server accepts connections, validates envelopes, and routes messages to addressed recipients
+- [x] **RELAY-02**: Relay performs authoritative Zod validation on all inbound envelopes before routing
+- [x] **RELAY-03**: Messages are routed by explicit session addressing, not broadcast to all connected sessions
 - [x] **RELAY-04**: Relay daemon auto-spawns on first use when no relay is running locally
 - [x] **RELAY-05**: Relay daemon lifecycle is independent of any participant — relay survives session disconnects and reconnects
 - [x] **RELAY-06**: Single-instance relay enforcement via lockfile with generation tokens for stale lock detection
 - [x] **RELAY-07**: Relay idle shutdown when no connections remain and no pending protocol state exists
-- [ ] **RELAY-08**: SQLite-backed durable state for spaces, memberships, session registry, and transcript pointers (WAL mode, busy_timeout)
-- [ ] **RELAY-09**: Graceful disconnect handling — session departure does not corrupt relay state or other sessions
+- [x] **RELAY-08**: SQLite-backed durable state for spaces, memberships, session registry, and transcript pointers (WAL mode, busy_timeout)
+- [x] **RELAY-09**: Graceful disconnect handling — session departure does not corrupt relay state or other sessions
 
 ### Collaboration Space
 
-- [ ] **SPACE-01**: Sessions can create, join, and leave a collaboration space
-- [ ] **SPACE-02**: A session can belong to at most one space at a time (v1 simplification)
-- [ ] **SPACE-03**: Space membership is persisted in SQLite and survives relay restarts
-- [ ] **SPACE-04**: Participation requires explicit opt-in (join action or invitation) — network presence alone never grants membership
+- [x] **SPACE-01**: Sessions can create, join, and leave a collaboration space
+- [x] **SPACE-02**: A session can belong to at most one space at a time (v1 simplification)
+- [x] **SPACE-03**: Space membership is persisted in SQLite and survives relay restarts
+- [x] **SPACE-04**: Participation requires explicit opt-in (join action or invitation) — network presence alone never grants membership
 
 ### Messaging
 
-- [ ] **MSG-01**: Sessions can send messages directly to another session in the same space
-- [ ] **MSG-02**: Sessions can send messages addressed to all sessions in the same space
-- [ ] **MSG-03**: Multi-turn conversations are supported — sessions can continue back-and-forth exchanges, not just one-shot dispatch
+- [x] **MSG-01**: Sessions can send messages directly to another session in the same space
+- [x] **MSG-02**: Sessions can send messages addressed to all sessions in the same space
+- [x] **MSG-03**: Multi-turn conversations are supported — sessions can continue back-and-forth exchanges, not just one-shot dispatch
 - [x] **MSG-04**: Human messages to the space route to the orchestrator session by default
 - [x] **MSG-05**: Human can address a specific session directly, bypassing orchestrator default
 - [x] **MSG-06**: Orchestrator can assign work to sessions, follow up on progress, and consolidate questions for the human
@@ -60,20 +60,20 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Multi-Human
 
-- [ ] **MHUM-01**: Multiple humans can participate in the same collaboration space, each bringing their own local agent sessions
+- [x] **MHUM-01**: Multiple humans can participate in the same collaboration space, each bringing their own local agent sessions
 
 ### Adapters
 
 - [x] **ADAPT-01**: Adapter ingress pattern defined — adapters translate runtime-native I/O into valid protocol envelopes sent to the relay via WebSocket
-- [ ] **ADAPT-02**: At least two runtime adapters implemented to prove cross-runtime collaboration (exact runtimes are implementation choices)
+- [x] **ADAPT-02**: At least two runtime adapters implemented to prove cross-runtime collaboration (exact runtimes are implementation choices)
 - [x] **ADAPT-03**: Adapters are edge concerns — they connect to the relay using the same session client and WebSocket protocol as any other consumer
 - [x] **ADAPT-04**: Stdio-based adapter with framed messages, bounded queues, and clear overload errors for runtimes that communicate via stdin/stdout
 
 ### Human Oversight
 
-- [ ] **OVER-01**: Human-visible surface showing who is participating, what each session is doing, and what needs attention
-- [ ] **OVER-02**: Native interruptions (permission prompts, auth, destructive confirmations) stay in the native client — the collaboration layer surfaces which session is blocked and why, without replacing native UX
-- [ ] **OVER-03**: Human can observe the collaboration timeline without automatically injecting all messages as context into every session
+- [x] **OVER-01**: Human-visible surface showing who is participating, what each session is doing, and what needs attention
+- [x] **OVER-02**: Native interruptions (permission prompts, auth, destructive confirmations) stay in the native client — the collaboration layer surfaces which session is blocked and why, without replacing native UX
+- [x] **OVER-03**: Human can observe the collaboration timeline without automatically injecting all messages as context into every session
 
 ### CLI & Packaging
 
@@ -140,22 +140,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SESS-02 | 1 | Complete |
 | SESS-03 | 1 | Complete |
 | SESS-04 | 1 | Complete |
-| RELAY-01 | 2 | Pending |
-| RELAY-02 | 2 | Pending |
-| RELAY-03 | 2 | Pending |
+| RELAY-01 | 2 | Complete |
+| RELAY-02 | 2 | Complete |
+| RELAY-03 | 2 | Complete |
 | RELAY-04 | 3 | Complete |
 | RELAY-05 | 3 | Complete |
 | RELAY-06 | 3 | Complete |
 | RELAY-07 | 3 | Complete |
-| RELAY-08 | 2 | Pending |
-| RELAY-09 | 2 | Pending |
-| SPACE-01 | 2 | Pending |
-| SPACE-02 | 2 | Pending |
-| SPACE-03 | 2 | Pending |
-| SPACE-04 | 2 | Pending |
-| MSG-01 | 2 | Pending |
-| MSG-02 | 2 | Pending |
-| MSG-03 | 2 | Pending |
+| RELAY-08 | 2 | Complete |
+| RELAY-09 | 2 | Complete |
+| SPACE-01 | 2 | Complete |
+| SPACE-02 | 2 | Complete |
+| SPACE-03 | 2 | Complete |
+| SPACE-04 | 2 | Complete |
+| MSG-01 | 2 | Complete |
+| MSG-02 | 2 | Complete |
+| MSG-03 | 2 | Complete |
 | MSG-04 | 4 | Complete |
 | MSG-05 | 4 | Complete |
 | MSG-06 | 4 | Complete |
@@ -164,16 +164,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | META-03 | 4 | Complete |
 | META-04 | 4 | Complete |
 | ADAPT-01 | 4 | Complete |
-| ADAPT-02 | 5 | Pending |
+| ADAPT-02 | 5 | Complete |
 | ADAPT-03 | 4 | Complete |
 | ADAPT-04 | 4 | Complete |
-| OVER-01 | 5 | Pending |
-| OVER-02 | 5 | Pending |
-| OVER-03 | 5 | Pending |
-| MHUM-01 | 5 | Pending |
+| OVER-01 | 5, 6 | Complete (gap closure in Phase 6) |
+| OVER-02 | 5 | Complete |
+| OVER-03 | 5 | Complete |
+| MHUM-01 | 5 | Complete |
 | CLI-01 | 3 | Complete |
 | CLI-02 | 3 | Complete |
-| CLI-03 | 3 | Complete |
+| CLI-03 | 3, 6 | Complete (gap closure in Phase 6) |
 
 **Coverage:**
 - v1 requirements: 44 total
@@ -182,4 +182,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-04-10*
-*Last updated: 2026-04-10 after roadmap traceability*
+*Last updated: 2026-04-15 after v1.0 milestone audit gap closure*
