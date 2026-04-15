@@ -9,7 +9,6 @@ export default defineConfig({
   external: [
     "better-sqlite3",
     "@agent-talkie/persistence",
-    "@agent-talkie/protocol",
     "@agent-talkie/client",
     "@agent-talkie/supervisor",
   ],
