@@ -258,22 +258,19 @@ New humans automatically fit **MHUM-01** routing once registered with `is_human`
 | A2 | Cursor accepts MCP server over **stdio** with `@modelcontextprotocol/sdk` same as other hosts | Standard Stack | If Cursor requires Streamable HTTP only, transport choice changes [ASSUMED — verify Cursor MCP docs at implementation] |
 | A3 | CLI opening SQLite read-only with same PRAGMAs as relay avoids lock stalls | Pattern 2 | May need read-uncommitted or shorter transactions [ASSUMED] |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Codex CLI I/O contract for a sidecar adapter**  
-   - What we know: OpenAI documents Codex App Server JSON-RPC / JSONL and MCP integration at high level [CITED: [Codex MCP](https://developers.openai.com/codex/mcp), [App Server](https://developers.openai.com/codex/app-server)].  
-   - What’s unclear: Exact subprocess flags and event stream for “blocked on permission” detection.  
-   - Recommendation: Spike subprocess in `adapter-codex` and map events → `metadata.patch`; mock in tests if CLI unavailable in CI.
+1. **Codex CLI I/O contract for a sidecar adapter** *(RESOLVED)*  
+   - *Was:* Exact subprocess flags and event stream for “blocked on permission” detection.  
+   - *Resolution:* Addressed in **05-02-PLAN.md** — spike `packages/adapter-codex` with mock child in CI; stderr heuristic + optional live Codex UAT; OpenAI docs remain high-level references only.
 
-2. **Owner assignment moment**  
-   - What we know: CONTEXT leaves discretion (first creator vs explicit claim).  
-   - What’s unclear: Product preference for multi-human edge cases.  
-   - Recommendation: Default **first human to join empty space** becomes owner; transfer tool deferred.
+2. **Owner assignment moment** *(RESOLVED)*  
+   - *Was:* First creator vs explicit claim for multi-human edge cases.  
+   - *Resolution:* Addressed in **05-01-PLAN.md** — `tryAssignSpaceOwnerIfUnsetForHuman` on first human join when `owner_session_id` is NULL; transfer deferred per CONTEXT discretion.
 
-3. **Watch mode transport**  
-   - What we know: WebSocket gives live `collaboration.metadata` events.  
-   - What’s unclear: Whether transcript tail should stream over WS or poll DB.  
-   - Recommendation: WS client for control/metadata + transcript polling or catch-up API already used post-join [VERIFIED: `sendTranscriptCatchUp` in server] — mirror for CLI session.
+3. **Watch mode transport** *(RESOLVED)*  
+   - *Was:* Transcript tail over WebSocket vs DB polling.  
+   - *Resolution:* Addressed in **05-05-PLAN.md** — human `TalkieSessionClient` for live envelopes plus periodic SQLite reads for participant table and transcript tail (same hybrid as RESEARCH § Pattern 3).
 
 ## Environment Availability
 
