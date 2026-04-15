@@ -130,6 +130,13 @@ Plans:
 
 **Gap Closure:** Closes integration and flow gaps from v1.0 milestone audit
 
+**Plans:** 2 plans in 1 wave
+
+Plans:
+
+- [ ] 06-01-PLAN.md — Relay DB：`mkdir` + `migrate` + 新鲜数据目录 Vitest 回归（OVER-01, CLI-03）
+- [ ] 06-02-PLAN.md — 自 CLI 移除 `@agent-talkie/protocol`（package.json / pretest / tsup / lockfile）（CLI-03）
+
 **Success criteria:**
 
 1. `talkie who --slug <slug>` on a fresh data directory (no prior relay start) does not crash with `SqliteError: no such table` — either auto-starts the relay or runs migrations before querying.
