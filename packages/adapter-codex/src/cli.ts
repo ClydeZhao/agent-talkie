@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { runCodexAdapter } from "./codex-bridge.js";
 
@@ -9,7 +10,7 @@ function isMainModule(): boolean {
     return false;
   }
   try {
-    return resolve(argv1) === resolve(entry);
+    return realpathSync(resolve(argv1)) === realpathSync(resolve(entry));
   } catch {
     return false;
   }

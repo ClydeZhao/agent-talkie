@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { realpathSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { TalkieSessionClient } from "@agent-talkie/client";
 import {
   getCollaborationMetadataSnapshot,
@@ -384,4 +386,26 @@ export async function runMcpServer(): Promise<void> {
     "@modelcontextprotocol/sdk/server/stdio.js"
   );
   await server.connect(new StdioServerTransport());
+}
+
+function isMainModule(): boolean {
+  const entry = fileURLToPath(import.meta.url);
+  const argv1 = process.argv[1];
+  if (!argv1) {
+    return false;
+  }
+  try {
+    return realpathSync(resolve(argv1)) === realpathSync(resolve(entry));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
+  void runMcpServer().catch((err) => {
+    process.stderr.write(
+      `[talkie-cursor-mcp] ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exitCode = 1;
+  });
 }

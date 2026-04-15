@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "agent-talkie": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/packages/adapter-cursor-mcp/dist/mcp-server.js"
+      ],
+      "env": {
+        "TALKIE_MCP_DISPLAY_NAME": "cursor-mcp",
+        "TALKIE_MCP_RUNTIME": "adapter-cursor-mcp",
+        "TALKIE_MCP_WORKSPACE": "${workspaceFolder}"
+      }
+    }
+  }
+}
