@@ -3,9 +3,12 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "files": ["dist", "dist-app"],
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build:lib": "vite build",
+    "build:app": "vite build --config vite.app.config.ts",
+    "build": "npm run build:lib && npm run build:app",
     "pretest": "npm run build -w @agent-talkie/protocol",
     "test": "vitest run"
   },
