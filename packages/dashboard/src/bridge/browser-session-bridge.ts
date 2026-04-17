@@ -19,6 +19,14 @@ import {
 const DEFAULT_URL = "ws://127.0.0.1:18765";
 const DEFAULT_SUPPORTED_VERSIONS = { minVersion: 1, maxVersion: 1 } as const;
 
+export type ConnectionHealthUiState =
+  | "connected"
+  | "connecting"
+  | "reconnecting"
+  | "disconnected";
+
+export type StaleUiReason = "protocol_version" | "relay_generation";
+
 function storageSet(key: string, value: string): void {
   if (typeof sessionStorage !== "undefined") {
     sessionStorage.setItem(key, value);
@@ -44,6 +52,12 @@ export class BrowserSessionBridge {
   private negotiatedVersion: number | null = null;
   private registeredSessionId: string | null = null;
   private maxRelaySeq = 0;
+  private _health: ConnectionHealthUiState = "disconnected";
+  private readonly healthListeners = new Set<
+    (s: ConnectionHealthUiState) => void
+  >();
+  private _staleReason: StaleUiReason | null = null;
+  private readonly staleListeners = new Set<() => void>();
   private readonly envelopeHandlers = new Set<(env: Envelope) => void>();
   private pendingJoin:
     | {
@@ -93,10 +107,74 @@ export class BrowserSessionBridge {
     };
   }
 
+  getConnectionHealth(): ConnectionHealthUiState {
+    return this._health;
+  }
+
+  onConnectionHealthChange(
+    cb: (s: ConnectionHealthUiState) => void,
+  ): () => void {
+    this.healthListeners.add(cb);
+    return () => {
+      this.healthListeners.delete(cb);
+    };
+  }
+
+  getStaleUiReason(): StaleUiReason | null {
+    return this._staleReason;
+  }
+
+  onStaleUiChange(cb: () => void): () => void {
+    this.staleListeners.add(cb);
+    return () => {
+      this.staleListeners.delete(cb);
+    };
+  }
+
+  notifyRelayGenerationStale(): void {
+    this.setStaleReason("relay_generation");
+  }
+
+  clearStaleUi(): void {
+    this._staleReason = null;
+    this.emitStale();
+  }
+
+  private setHealth(next: ConnectionHealthUiState): void {
+    if (this._health === next) {
+      return;
+    }
+    this._health = next;
+    for (const cb of this.healthListeners) {
+      try {
+        cb(next);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  private setStaleReason(reason: StaleUiReason): void {
+    this._staleReason = reason;
+    this.emitStale();
+  }
+
+  private emitStale(): void {
+    for (const cb of this.staleListeners) {
+      try {
+        cb();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   async connect(): Promise<void> {
     if (this.socket?.readyState === WebSocket.OPEN) {
       return;
     }
+
+    this.setHealth("connecting");
 
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.url);
@@ -111,6 +189,7 @@ export class BrowserSessionBridge {
           this.socket = null;
         }
         this.negotiatedVersion = null;
+        this.setHealth("disconnected");
         try {
           ws.close();
         } catch {
@@ -141,6 +220,7 @@ export class BrowserSessionBridge {
 
         const nack = relayHandshakeNackSchema.safeParse(parsed);
         if (nack.success) {
+          this.setStaleReason("protocol_version");
           fail(new Error(`Handshake nack: ${nack.data.message}`));
           return;
         }
@@ -168,7 +248,9 @@ export class BrowserSessionBridge {
         ws.onmessage = (e) => {
           this.dispatchPostHandshake(e);
         };
-        ws.onclose = null;
+        ws.onclose = () => {
+          this.setHealth("disconnected");
+        };
         resolve();
       };
 
@@ -199,6 +281,17 @@ export class BrowserSessionBridge {
       return;
     }
 
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "type" in parsed &&
+      (parsed as { type: string }).type === "protocol.error" &&
+      "error" in parsed &&
+      (parsed as { error: string }).error === "envelope_version_mismatch"
+    ) {
+      this.setStaleReason("protocol_version");
+    }
+
     if (this.pendingRegister) {
       const reg = sessionRegisteredWireSchema.safeParse(parsed);
       if (reg.success) {
@@ -222,6 +315,7 @@ export class BrowserSessionBridge {
       ) {
         const p = this.pendingRegister;
         this.pendingRegister = undefined;
+        this.setHealth("disconnected");
         p.reject(new Error("protocol.error during session.register"));
         return;
       }
@@ -249,6 +343,7 @@ export class BrowserSessionBridge {
       ) {
         const p = this.pendingResume;
         this.pendingResume = undefined;
+        this.setHealth("disconnected");
         p.reject(new Error("protocol.error during session.resume"));
         return;
       }
@@ -263,6 +358,7 @@ export class BrowserSessionBridge {
           const parsedJoin = spaceJoinedWireSchema.safeParse(parsed);
           if (parsedJoin.success) {
             this.pendingJoin = undefined;
+            this.setHealth("connected");
             pj.resolve({
               spaceId: parsedJoin.data.spaceId,
               slug: pj.slug,
@@ -272,6 +368,7 @@ export class BrowserSessionBridge {
         }
         if (t === "protocol.error") {
           this.pendingJoin = undefined;
+          this.setHealth("disconnected");
           pj.reject(new Error(JSON.stringify(parsed)));
           return;
         }
@@ -417,6 +514,7 @@ export class BrowserSessionBridge {
   }
 
   close(): void {
+    this.setHealth("disconnected");
     const pend = this.pendingRegister;
     this.pendingRegister = undefined;
     if (pend) {
