@@ -11,7 +11,9 @@ import { RELAY_GENERATION_KEY } from "../bridge/session-storage-keys.js";
 import "../shell/connection-shell.js";
 
 void (async () => {
-  const wsUrl = "ws://127.0.0.1:18765";
+  const wsUrl = import.meta.env.DEV
+    ? "ws://127.0.0.1:18765"
+    : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
   const bridge = new BrowserSessionBridge({ url: wsUrl });
   const shell = document.createElement("talkie-connection-shell");
   const app = document.getElementById("app");
