@@ -1,269 +1,276 @@
-# Domain Pitfalls — Cross-Runtime, Relay-Based, Local-First Collaboration Layer
+# Pitfalls — Adding a Real-Time Web Dashboard (v2.0)
 
-**Product:** agent-talkie — local-first, relay-based WebSocket collaboration for coding-agent sessions (npm package + automatic local relay daemon; SQLite; zero external services by default).
+**Product:** agent-talkie — WebSocket relay, SQLite (WAL), supervisor-managed daemon, `@agent-talkie/client` for native sessions, CLI reads SQLite for oversight.
 
-**Researched:** 2026-04-10
+**Researched:** 2026-04-17
 
-**Scope:** Pitfalls specific to relay daemons, WebSocket fan-out, SQLite under multi-process/multi-session load, cross-runtime adapters, protocol evolution, session identity, and extending local-first to remote relays — not generic distributed-systems platitudes.
+**Scope:** Mistakes common when **adding** a localhost-scoped, Lit/Vite-style web dashboard on top of an **existing** relay + SQLite system — connection lifecycle, concurrency, UI stack, update rates, security, sync, dev UX, monorepo packaging. Not a repeat of generic distributed-systems advice.
 
-**Overall confidence:** MEDIUM — grounded in PROJECT.md, PRD.md, ARCHITECTURE-CONSTRAINTS.md; SQLite/WebSocket/daemon patterns cross-checked with common failure modes and public documentation themes. Phase labels are thematic until ROADMAP.md exists.
+**Confidence:** MEDIUM–HIGH for SQLite single-writer + WAL patterns and WebSocket-per-connection ordering (well-documented). MEDIUM for Lit-specific footguns (verify against current Lit docs in implementation). Phase names are **thematic** until `.planning/ROADMAP.md` assigns numeric phases.
 
----
-
-## Critical Pitfalls
-
-### CP1: Treating the first connected session as the relay host
-
-**What goes wrong:** The “whoever connects first spawns the daemon” session becomes a hidden SPOF. When that IDE or terminal closes, the relay dies or migrates awkwardly; other sessions see flapping channels, duplicate spaces, or “ghost” participants.
-
-**Why it happens:** Easiest bootstrap is `child_process.spawn` from the first client; product wording says “automatic daemon” without spelling out **relay-owned process identity** (PID file, lock, port lease).
-
-**Consequences:** Violates ARCHITECTURE-CONSTRAINTS: “relay lifecycle must not depend on one participant”; “first session must not become permanent special host.”
-
-**Prevention:** Define a **relay supervisor model**: single OS-level relay instance per workspace/channel lease (or per user-scoped socket), with explicit **adoption** if the supervisor dies. Clients only attach; they never “own” the relay’s lifetime beyond a bounded grace period.
-
-**Warning signs:** Docs or code say “parent process”; relay PID equals a client PID; no lockfile or port conflict story; killing one IDE kills everyone’s channel.
-
-**Primary phase:** Relay daemon bootstrap & lifecycle (before scaling adapters).
+**Related:** Earlier cross-cutting pitfalls (relay host identity, idle shutdown races, orphan processes, protocol ordering) remain valid; see [Historical — cross-cutting collaboration pitfalls](#historical--cross-cutting-collaboration-pitfalls) at end.
 
 ---
 
-### CP2: Idle shutdown that races active sessions
+## WD1: Idle shutdown or “no traffic” heuristics treat the dashboard as absent
 
-**What goes wrong:** A timer shuts the daemon after “no messages for N minutes” while WebSockets are still open but quiet, or while a long native approval is pending. Sessions disconnect mid-coordination; SQLite checkpoints or WAL growth interact badly with abrupt exit.
+**Description:** The relay supervisor uses idle timers or message-based liveness. A dashboard WebSocket may stay connected while the UI is quiet (user reading transcript), or reconnect often during dev (HMR). If idle policy only counts **agent** traffic or certain message kinds, the daemon shuts down while humans still expect oversight — or conversely stays up because the dashboard polls SQLite aggressively and looks “active” in the wrong dimension.
 
-**Why it happens:** Idle detection keyed only on **traffic**, not on **membership + intent** (joined, orchestrator assigned, human-visible pending state).
+**Risk level:** High
 
-**Prevention:** Idle policy must consider: open WebSocket count, explicit “session present” heartbeats, **pending protocol state** (unacked idempotent ops, in-flight invites), and configurable minimum lifetime after last join. Prefer **soft idle** (stop accepting new joins) before **hard shutdown**.
+**Warning signs:** Shutdown logs while a browser tab is open; “random” relay exit during long reads; dev-only flakiness when HMR reconnects; product behavior differs between CLI `watch` and dashboard for the same space.
 
-**Warning signs:** Bugs filed as “random disconnect overnight”; shutdown logs show timer firing with non-zero connections; flaky tests only under load.
+**Prevention strategy:** Define **liveness dimensions explicitly**: open WebSocket count (including dashboard role), **heartbeat** for human/dashboard connections, and membership of **human-capable** sessions in the policy. Treat **dashboard connections** as first-class participants for idle purposes (or use a dedicated **read-only subscriber** channel with its own idle rules documented in one place). Align with existing CP2-style rules: idle must not race **quiet but connected** sessions. Add integration tests: dashboard connected + zero conversation messages + no shutdown for N minutes (configurable).
 
-**Primary phase:** Daemon lifecycle & operational policy.
-
----
-
-### CP3: Orphan / zombie relay processes after parent exit
-
-**What goes wrong:** `npx` or IDE kills the adapter; the relay keeps running on a stale port, or conversely the relay dies and leaves lockfiles/sockets. Next start fails with EADDRINUSE or connects to the wrong generation.
-
-**Why it happens:** Detached `spawn` without a **process group** story; no cleanup on `SIGTERM`/`SIGHUP`; Windows vs Unix signal semantics ignored; npm lifecycle hooks don’t stop daemons.
-
-**Prevention:** Use a **generation token** (written atomically) + **lockfile with stale detection** (PID alive check). On relay start, reconcile port, lock, and DB path. Document `agent-talkie relay stop` / `--force`. Prefer **stdio or IPC parent heartbeat** only as a *supplement*, not the sole liveness definition (violates participant-independent lifecycle if misapplied).
-
-**Warning signs:** `lsof` shows stray node processes; users learn `kill -9` as the fix; CI leaves listeners behind.
-
-**Primary phase:** Daemon bootstrap; packaging (`npm`/CLI).
+**Suggested phase:** Relay lifecycle & supervisor policy (early); dashboard real-time feed design (handshake + heartbeat contract).
 
 ---
 
-### CP4: Assuming total message ordering across the whole space
+## WD2: Mixing “session client” semantics with “dashboard subscriber” on one WebSocket path
 
-**What goes wrong:** Clients infer global order from WebSocket delivery order; after reconnect, duplicates or reordering breaks idempotency keys, orchestrator summaries, and “last message wins” metadata.
+**Description:** Reusing `@agent-talkie/client` or the same handshake as coding-agent sessions for the browser UI without a clear **role** split leads to wrong routing (orchestrator default for “human” messages), accidental participation in space membership, or envelope types the relay does not expect from a browser.
 
-**Why it happens:** WebSocket is a **single ordered stream per connection**, not a distributed log. Multiple writers + fan-out + reconnects = **per-connection** order, not **causal** order unless you add it.
+**Risk level:** High
 
-**Prevention:** Protocol-level **logical timestamps or version vectors per resource**, **monotonic sequence per session**, and **idempotency keys** on side effects. Define whether the relay assigns **global sequence numbers** (single writer to the log) or whether clients merge with CRDT-style rules for metadata only. Never rely on wall clock alone for ordering.
+**Warning signs:** Dashboard messages appear as a normal agent session; orchestrator rules fire on UI telemetry; duplicate “human” sessions after each tab refresh; protocol errors only from the web build.
 
-**Warning signs:** “Works on my machine” until Wi‑Fi blip; duplicate handler execution; orchestrator double-assigns work.
+**Prevention strategy:** Specify a **dedicated dashboard join** (or `human.session` with stable credentials) and a **narrow capability set** (subscribe, query, control actions you explicitly allow). Keep transport shared (WebSocket) but **separate message types / state machine** from adapter-driven sessions. Reuse **Zod types from `@agent-talkie/protocol`** in the dashboard bundle; do not fork schema in the UI. Document which client library surfaces are for **adapters** vs **dashboard** so the monorepo does not blur boundaries.
 
-**Primary phase:** Core protocol & message envelope; relay routing.
-
----
-
-### CP5: SQLite “works in dev” then `database is locked` under real concurrency
-
-**What goes wrong:** Multiple adapters + relay + CLI hit the same DB; default journal mode, missing `busy_timeout`, long transactions, or **write transactions that span await** cause `SQLITE_BUSY` storms.
-
-**Why it happens:** SQLite allows concurrent readers with WAL, but **writes serialize**. A relay that batches many session updates in one big transaction blocks everyone.
-
-**Prevention (actionable):** Enable **WAL**; set **`busy_timeout`** on every connection; keep write transactions **short**; consider a **single writer queue** in the relay process for metadata mutations; separate **hot read paths** from writes; avoid holding DB locks across I/O. For multi-process access to the same file, treat “relay is sole writer, others read via API” as the default shape unless profiling proves otherwise.
-
-**Warning signs:** Spiky latency; errors only when >2 sessions; relay event loop stalls correlate with DB writes.
-
-**Primary phase:** Persistence & schema; relay integration with store.
-
-**Confidence:** MEDIUM — aligns with SQLite locking model (single-writer commits); verify exact PRAGMA defaults for your Node SQLite driver in implementation phase.
+**Suggested phase:** Protocol & relay routing extensions; thin `@agent-talkie/dashboard-client` or documented subset of `@agent-talkie/client`.
 
 ---
 
-### CP6: Session identity tied to connection id or WebSocket handle
+## WD3: SQLite opened for writes from the dashboard server alongside the relay
 
-**What goes wrong:** Reconnect creates a “new” session; orchestrator state, invites, and human-visible names desync; duplicate participants with the same display name.
+**Description:** A common shortcut is embedding `better-sqlite3` (or another driver) in the HTTP server that serves the UI so the API can “just read/write the same file.” The relay is already a writer. Even with WAL, **writes serialize**; two writers across processes multiply `SQLITE_BUSY`, retry storms, and latency spikes. Worst case: well-meaning migrations or pragma changes from a second process.
 
-**Why it happens:** Easy to key rows in SQLite by `connId`; PRD requires **stable session identity** across reconnects and runtimes.
+**Risk level:** Critical
 
-**Prevention:** Separate **session_id** (stable, chosen at join / persisted in adapter config) from **connection_id** (ephemeral). Persist session credentials locally per adapter (e.g. machine-local file under user config) so Cursor/Codex/Claude Code reconnect as the **same** session. Collision policy: explicit disambiguators per PROJECT.md default decisions.
+**Warning signs:** Intermittent `database is locked`; spikes when the UI loads; relay and dashboard deployed as separate Node processes both touching the DB; WAL checkpoints behaving oddly under load.
 
-**Warning signs:** Every reconnect shows “joined” events; duplicate rows; human sees two `reviewer-1` with different ephemeral ids.
+**Prevention strategy:** Default architecture: **relay remains the sole writer**; dashboard gets data via **WebSocket feed + optional read-only HTTP API implemented inside the relay process** (same Node runtime as `openDatabase`) or **read-only** SQLite connections **only** after verifying no writes and consistent `busy_timeout`. If a separate API process is required, use an explicit **outbox / event stream** from relay or a **single-writer service** — not ad hoc dual-writer SQLite. Keep read paths **short transactions**, avoid long-lived read transactions on hot tables.
 
-**Primary phase:** Session model & join protocol; adapter local state.
-
----
-
-### CP7: Protocol versioning only in TypeScript types, not on the wire
-
-**What goes wrong:** Non-TS adapters (or older package versions) send payloads the relay rejects or misroutes silently after a minor bump.
-
-**Why it happens:** Zod validates locally; JSON Schema export lags; envelope `version` optional “for now.”
-
-**Prevention:** **Mandatory** envelope version + **capability negotiation** at handshake. Relay behavior: explicit **reject with structured error** vs **downgrade path** per message kind. Keep JSON Schema generation in CI as a **release gate**. Document **compatibility matrix** (relay version × adapter min).
-
-**Warning signs:** “Undefined” fields after upgrade; partial upgrades in one workspace; bug reports without version tuples.
-
-**Primary phase:** Protocol & schema; release engineering.
+**Suggested phase:** Persistence & relay integration; dashboard API surface (choose process boundaries before UI work).
 
 ---
 
-### CP8: Cross-runtime adapters sharing one blocking stdio bridge
+## WD4: High-frequency SQLite polling from the dashboard backend or SSR
 
-**What goes wrong:** Claude Code / Codex / Cursor adapters deadlock or drop chunks when binary data, large payloads, or JSON lines span flush boundaries; backpressure stalls the native runtime.
+**Description:** Implementing “live” UI by polling transcript or metadata every 100–300 ms from SQLite duplicates work the relay already does, increases disk I/O, and contends with the relay’s write transactions (readers can block behind writers depending on snapshot/isolation).
 
-**Why it happens:** Treating stdio as “free IPC” without framing, length prefixing, or flow control.
+**Risk level:** Medium–High
 
-**Prevention:** **Framed messages** (length-prefixed or NDJSON with max line size), **strict caps**, **async pump** in adapter with bounded queues, clear **error surface** to the human when the bridge is overloaded. Keep stdio at the **adapter edge**; core remains WebSocket semantics (ARCHITECTURE-CONSTRAINTS).
+**Warning signs:** CPU/disk usage scales with number of open dashboard tabs; `EXPLAIN QUERY PLAN` never runs but load grows linearly with poll rate; relay write latency correlates with dashboard refresh.
 
-**Warning signs:** Truncated JSON; intermittent parse errors; memory growth in adapter.
+**Prevention strategy:** Push **incremental updates** over the existing WebSocket infrastructure (cursor/sequence per resource). Use SQLite reads for **initial snapshot + search** (debounced), not for continuous sync. Apply **throttling and coalescing** server-side if the relay emits fine-grained events.
 
-**Primary phase:** Adapter ingress per runtime.
-
----
-
-### CP9: Local-first relay reused for remote without auth/threat model
-
-**What goes wrong:** Same handshake as localhost is exposed on a LAN or tunnel; anyone who can open the port joins; SQLite becomes exfiltration surface for collaboration metadata and transcripts.
-
-**Why it happens:** “Remote is just another relay” without **join secrets, invite tokens, binding to interface**, and **TLS termination** story.
-
-**Prevention:** **Explicit trust mechanism** for cross-machine (PRD). Default bind to **loopback**; remote mode requires **token + optional mTLS or SSH tunnel** documented as the supported path. Separate **admin** operations from **session** operations in the protocol.
-
-**Warning signs:** Relay listens on `0.0.0.0` by accident; no audit of who joined; metadata includes paths or secrets.
-
-**Primary phase:** Remote extension & invite/join design; hardening pass.
+**Suggested phase:** Real-time feed & snapshot model; search/transcript UX phase (batch + index strategy).
 
 ---
 
-### CP10: Orchestrator as mandatory relay bottleneck
+## WD5: Real-time update flooding (UI and network)
 
-**What goes wrong:** Every session-to-session message funnels through orchestrator process or DB row, killing latency and violating “direct session-to-session messaging.”
+**Description:** Fan-out of every envelope to the dashboard, or re-sending the full transcript on each event, overwhelms the browser (layout thrashing, huge virtual lists), the WebSocket, and the human’s ability to interpret the stream. Metadata patches every tick amplify traffic O(sessions × events).
 
-**Why it happens:** Easiest routing table; conflating **control plane** with **data plane**.
+**Risk level:** Medium–High
 
-**Prevention:** Relay routes **peer messages** by session id; orchestrator consumes **role-specific** topics or filters, not all traffic. Metadata updates orchestrator owns ≠ all payloads.
+**Warning signs:** DevTools shows MB/s on localhost; frame drops when many agents chat; memory grows with session duration; laptop fans spin on idle spaces with noisy metadata.
 
-**Warning signs:** Orchestrator CPU scales with message count; protocol docs say “send to orchestrator first.”
+**Prevention strategy:** **Delta** payloads, **debounce** metadata views, **coalesce** bursts (requestAnimationFrame or 50–100 ms windows), **cap** message size on wire for dashboard subscribers. For transcript UI, use **virtualized lists** and **incremental fetch** (cursor). Consider **topic subscriptions** (e.g. transcript vs topology vs control) so not every client receives everything.
 
-**Primary phase:** Routing design; orchestrator role implementation.
-
----
-
-## Technical Debt Patterns
-
-| Pattern | Why it bites later | Prevention | Phase |
-|--------|-------------------|------------|--------|
-| “We’ll add idempotency later” | Reconnect retries duplicate side effects | Define idempotency keys for join, metadata patch, assignment ops from v1 | Protocol |
-| Implicit channel = process cwd | Teams with multiple repos get wrong space | Explicit channel/space id; workspace labels are metadata, not sole key | Session & join |
-| Global mutex around all SQLite calls | Fixes locks, kills throughput | WAL + short txs + writer queue; measure before mutex | Persistence |
-| Feature flags only in clients | Relay and adapters drift | Version handshake + relay-side rejection rules | Protocol / release |
-| Logging PII (paths, tokens) | Trust story breaks; GDPR-style issues | Redact by default; structured logs with field allowlist | Security & ops |
-| Single JSON blob for all metadata | Migration pain; partial updates expensive | Normalized tables + patch/version per field group | Schema |
+**Suggested phase:** Dashboard UI architecture; relay fan-out policy for subscribers.
 
 ---
 
-## Integration Gotchas
+## WD6: Split-brain UI state (poll vs push; reconnect race)
 
-1. **npm postinstall spawning long-lived daemons** — surprises users/CI; violates expectations. Prefer **on-demand** start via CLI or first `connect`.
-2. **Different Node versions per runtime** — adapter and relay may diverge; pin engines and test matrix.
-3. **Cursor vs CLI cwd** — session workspace metadata wrong; adapters must pass explicit workspace root from runtime API when available.
-4. **Firewall / VPN** — WebSocket to `localhost` still works; remote extension fails mysteriously; document loopback vs LAN.
-5. **SQLite on network filesystems** — NFS/cloud sync folders corrupt or lock; warn against putting the DB in synced directories.
-6. **Terminal multiplexers** — orphan signals differ under tmux; test daemon parent/child assumptions.
-7. **Concurrent package major bumps** — one adapter on envelope v1, relay on v2; require relay to advertise supported range and fail fast.
+**Description:** The UI merges SQLite-backed REST responses with WebSocket-delivered events without a **single ordering model**. After reconnect, the client applies duplicates, misses gaps, or rewinds briefly to stale REST data — classic “flash of wrong state.”
 
----
+**Risk level:** High
 
-## Performance Traps
+**Warning signs:** Messages briefly disappear; duplicate lines after reconnect; filters/search results disagree with live tail; clock skew causes ordering glitches.
 
-- **Fan-out broadcast** to N sessions on every metadata tick → O(N²) traffic; use **delta patches** and **debounced** visibility updates (PRD: hybrid metadata upkeep).
-- **Large message payloads** through relay memory — cap size, stream or chunk for artifacts (keep core narrow; harnesses carry bulk context).
-- **Checkpoint storms** — many small writes without WAL tuning; monitor WAL size and checkpoint intervals.
-- **Synchronous SQLite** on relay hot path — blocks Node event loop; use async driver patterns and avoid fsync-per-message defaults without measurement.
+**Prevention strategy:** Assign **monotonic sequence or cursor** for transcript segments in the protocol or relay-side log; client keeps **last_cursor** and reconciles REST snapshot as **initial state only**, then applies live deltas **idempotently**. Align with CP4 themes: never assume global order without an explicit rule. On reconnect, **snapshot + catch-up** from relay (same code path as session resume where applicable).
+
+**Suggested phase:** Real-time sync & protocol sequencing; frontend state store design.
 
 ---
 
-## Security Mistakes
+## WD7: WebSocket connection lifecycle in dev (HMR, duplicate listeners, leaked timers)
 
-- Listening on all interfaces with no auth “for dev convenience.”
-- Storing invite tokens or relay secrets in world-readable files in the repo.
-- **Trusting session display names** for ACL — must use **session_id + proof** (token or local attestation model you define).
-- **Injection via message content** into HTML human surface — treat as untrusted; sanitize or render as plain text first.
-- **Path leakage** in workspace metadata — PRD says minimal by default; enforce allowlist for exported fields.
+**Description:** Vite HMR can remount components or re-run modules, opening **second WebSocket connections** without closing the first, registering duplicate message handlers, or leaving `setInterval` heartbeats running. This masquerades as relay bugs (double actions, memory growth) but is dev-only.
 
----
+**Risk level:** Medium (High for developer trust if misdiagnosed)
 
-## UX Pitfalls
+**Warning signs:** Duplicate console logs for each message; connection count in relay grows with each save; only reproduces in `vite dev`, not in preview/production build.
 
-- **Silent reconnect** — human thinks messages were delivered; show connection state and last-sync time on the human-visible surface.
-- **Ambiguous “who is orchestrator”** after reconnect — PRD open question; need visible role and **recovery** when orchestrator disappears.
-- **Spam join prompts** — violates explicit opt-in; require explicit invite/token even on LAN.
-- **Blaming the wrong runtime** for disconnects — surface **relay generation / version** in diagnostics.
+**Prevention strategy:** Centralize WS creation in a **singleton** or explicit **dispose** hook (`disconnectedCallback` in Lit). Use **`connectOnce` guard** or abort controller per component tree. In dev, log **client instance id** and **close reasons**. Test a **production build** before filing relay issues.
+
+**Suggested phase:** Dashboard foundation (Lit app shell, connection manager); DX checklist in CI or CONTRIBUTING.
 
 ---
 
-## “Looks Done But Isn’t” Checklist
+## WD8: Proxy / dual-origin pitfalls (dashboard dev server vs relay port)
 
-- [ ] Kill every IDE session; relay still meets lifecycle spec (survives or clean shutdown with clear next step).
-- [ ] Pull network cable mid-message; **no duplicate side effects** after restore (idempotency verified).
-- [ ] Two humans, same display name prefix; **disambiguators** appear and routing stays unambiguous.
-- [ ] Mixed package versions; user sees **actionable** incompatibility error, not opaque parse failure.
-- [ ] SQLite path on Dropbox/iCloud — documented unsupported or detected with warning.
-- [ ] Windows + macOS CI: **no orphan listeners** after test suite.
-- [ ] Orchestrator crash/disconnect; channel **degrades gracefully** (policy: election vs human reassignment — must be defined, not “undefined behavior”).
-- [ ] Remote relay: **non-loopback** bind requires explicit token/TLS/tunnel per docs.
+**Description:** Serving the UI from `localhost:5173` while the relay listens on another port breaks **cookies**, **WebSocket upgrade** proxies, and **browser security context** unless `vite.config` proxy + `ws: true` (or explicit `Sec-WebSocket-*` handling) is correct. Misconfiguration shows up as opaque `ECONNRESET` or 404 on upgrade.
 
----
+**Risk level:** Medium
 
-## Recovery Strategies
+**Warning signs:** WebSocket works when pointing UI at relay URL directly but fails through dev proxy; mixed content warnings if TLS introduced later.
 
-| Failure | Detection | Recovery |
-|--------|-----------|----------|
-| Stale lockfile / wrong generation | Start errors; connect to “wrong” channel | Generation token bump; `relay stop --force`; document wipe of **only** runtime state files |
-| WAL growth / corruption suspicion | Tooling reports integrity check fail | Backup DB; `PRAGMA integrity_check`; restore from export/transcript mirror if you add one |
-| Partitioned client | Heartbeat timeout; UI shows degraded | Auto-reconnect with backoff; surface unsent queue; human-triggered “flush” optional |
-| Protocol mismatch | Handshake error with version tuple | Pin adapter; upgrade relay; compatibility table |
-| Token leak (remote) | Audit | Rotate invite secret; invalidate sessions; shorten TTL |
+**Prevention strategy:** Document **one supported dev matrix**: direct WS to relay vs proxied path. If proxied, verify **HTTP upgrade** end-to-end. Prefer **same origin** in production (static assets served from relay HTTP or reverse proxy) to simplify cookies and CSRF if you add session cookies later.
+
+**Suggested phase:** Developer experience & monorepo (Vite config); deployment shape for “dashboard + relay”.
 
 ---
 
-## Pitfall-to-Phase Mapping
+## WD9: “Localhost is safe” — XSS, token leakage, and same-machine attackers
 
-Use this table when ROADMAP phases are named; adjust IDs when `.planning/ROADMAP.md` exists.
+**Description:** v2.0 is scoped to loopback, but **any process on the machine** can hit `127.0.0.1`. A malicious or compromised local app can call dashboard APIs, steal **invite/reconnect** tokens exposed in the UI bundle or `localStorage`, or exploit **XSS** in transcript rendering (agents emit untrusted text). **Browser extensions** can inject into pages.
 
-| Thematic phase | Pitfalls primarily addressed |
-|----------------|------------------------------|
-| Relay daemon bootstrap & lifecycle | CP1, CP2, CP3; Technical debt: on-demand start |
-| Core WebSocket protocol & routing | CP4, CP10; Performance: fan-out |
-| SQLite schema & persistence | CP5; Technical debt: mutex/blob |
-| Session identity, join, channel model | CP6; Integration: cwd |
-| Envelope versioning, Zod, JSON Schema | CP7 |
-| Per-runtime adapters (ingress) | CP8; Integration: Node/cwd |
-| Human-visible surface / orchestrator UX | CP10 (routing), UX section, CP6 |
-| Remote extension, invite/trust | CP9; Security section |
-| Hardening, CI, release gates | “Looks done”; CP7; orphan processes |
+**Risk level:** Medium (elevated if tokens grant space control without extra checks)
+
+**Warning signs:** Transcript rendered as HTML via `innerHTML`; tokens in global JS variables; no CSRF token on state-changing POST from a non-cookie context; dashboard assumes “no attacker on localhost.”
+
+**Prevention strategy:** Treat transcript and metadata as **untrusted**: default **text** or sanitized pipeline; **CSP** for built assets where feasible; **bind relay to loopback** and document threat model. For control actions (orchestrator, invites), require **same-origin** or token tied to **space owner** semantics already in PROJECT.md. Avoid long-lived secrets in `localStorage` without hardening; prefer **httpOnly** cookies only if you add a same-origin server. Rate-limit destructive operations per connection.
+
+**Suggested phase:** Security & control-plane review; transcript rendering component.
 
 ---
 
-## Sources
+## WD10: State-changing actions only validated in the UI
 
-- **Project authority:** `.planning/PROJECT.md`, `PRD.md`, `ARCHITECTURE-CONSTRAINTS.md` — constraints on relay independence, SQLite, WebSocket, adapters, explicit opt-in, orchestrator role, metadata ownership.
-- **SQLite concurrency model (locking/WAL):** [SQLite WAL documentation](https://www.sqlite.org/wal.html) — single-writer semantics; basis for CP5 prevention (HIGH confidence for model; MEDIUM for exact Node driver defaults).
-- **SQLite concurrent access discussion (patterns):** [Stack Overflow — multiple process access](https://stackoverflow.com/questions/75550581/sqlite-best-practices-for-dealing-with-multiple-process-access) — practical busy_timeout/WAL themes (MEDIUM confidence).
-- **WebSocket semantics:** IETF RFC 6455 — ordered reliable delivery **per connection**; cross-connection total order not implied (HIGH confidence for CP4).
-- **Process/orphan classes:** general Node `child_process` + signal behavior on Unix vs Windows (MEDIUM confidence; verify with implementation tests).
+**Description:** The dashboard offers buttons for orchestrator designation, invites, or messages, but the relay does not re-validate **authorization** (space owner, membership). A crafted WebSocket client bypasses the UI.
+
+**Risk level:** Critical
+
+**Warning signs:** All checks in Lit components only; relay accepts control envelopes from any connected socket in the space; no audit trail for who changed orchestrator.
+
+**Prevention strategy:** **Authorize on the relay** for every side effect (same as other sessions). UI is never a security boundary. Log control actions with **session_id** and **human** flag.
+
+**Suggested phase:** Relay routing & authorization hardening; any new dashboard control messages.
 
 ---
 
-## Gaps for phase-specific research
+## WD11: Lit / Web Component pitfalls in a data-heavy dashboard
 
-- Exact **orchestrator failover** algorithm (PRD open question) — needs a dedicated design phase.
-- **Transcript durability** split SQLite vs export (ARCHITECTURE-CONSTRAINTS open) — affects CP5 and backup/recovery.
-- **Auth model** for remote relay — legal/compliance and enterprise constraints not covered here.
+**Description:** Common Lit mistakes: assuming **attribute** reflection for complex objects (everything becomes strings); mutating nested objects without reassignment so **`@state` doesn’t trigger**; heavy work in **`render()`**; leaking **event listeners** on `document`/`window` without cleanup; **shadow DOM** breaking global CSS unless design tokens are wired; **willUpdate**/`updated` used for side effects that should be in explicit controllers.
+
+**Risk level:** Medium
+
+**Warning signs:** Stale UI until unrelated click; attributes show `[object Object]`; memory climbs on navigation; styles inconsistent with design reference (OpenClaw-like stack per PROJECT.md).
+
+**Prevention strategy:** Use **typed properties** for objects/arrays; follow **immutable data patterns** or explicit `requestUpdate`; move networking to **controllers** or dedicated modules; use **CSS variables** and shared token partials for theming across shadow roots. Add **linting** (e.g. custom rules or checklists) for `disconnectedCallback` cleanup.
+
+**Suggested phase:** Dashboard UI architecture & component library bootstrap.
+
+---
+
+## WD12: Monorepo build / bundle duplication and version skew
+
+**Description:** The dashboard bundles its own copy of protocol types, Zod schemas, or message constants. The relay ships another. A minor bump updates one package; the UI **silently mis-parses** or sends obsolete envelopes. Tree-shaking drops “unused” schema pieces that were only for reflection.
+
+**Risk level:** Medium–High
+
+**Warning signs:** Works in workspace protocol tests but fails in built UI; duplicate `node_modules` resolutions for `@agent-talkie/protocol`; different `zod` major in nested deps.
+
+**Prevention strategy:** **Workspace protocol** (`workspace:*`) for internal packages; **single version policy** at root; CI task: **build dashboard + relay** and run **contract tests** against the running relay. Export **JSON Schema** or **fixture messages** as golden tests consumed by both sides.
+
+**Suggested phase:** Monorepo packaging & release gates; CI matrix.
+
+---
+
+## WD13: Serving static dashboard from the wrong process or coupling release cycles
+
+**Description:** Embedding static file serving in the relay without clear boundaries couples **UI releases** to **relay releases**, or tempts ad hoc REST endpoints on the relay HTTP server that bypass the WebSocket protocol. Alternatively, two servers in production complicate CORS and idle behavior (WD1).
+
+**Risk level:** Medium
+
+**Warning signs:** Relay binary grows with every UI asset change; security headers differ between servers; users run old UI against new relay without compatibility checks.
+
+**Prevention strategy:** Choose explicitly: **(A)** static assets from relay process with a **version manifest** and handshake compatibility check, or **(B)** separate static host with documented **origin + API** matrix. Either way, expose **relay generation / version** to the UI (PROJECT.md already values diagnostics). Automate **embedding** build output into `packages/relay` or ship as sibling artifact — but keep **one compatibility story**.
+
+**Suggested phase:** Deployment & packaging; CI artifact layout.
+
+---
+
+## WD14: Supervisor / generation token mismatch after relay restart
+
+**Description:** The dashboard caches `ws://` URL or generation token from a previous relay instance. After supervisor restarts the relay, the UI connects to a **dead generation** or wrong port, shows empty state, or worse, **stale SQLite path** if misconfigured.
+
+**Risk level:** Medium
+
+**Warning signs:** Health endpoint (`/__agent-talkie/v1/health`) disagrees with UI assumptions; reconnect loops; CLI shows data but UI shows nothing.
+
+**Prevention strategy:** On each connection attempt, **verify generation** (existing relay health pattern) before binding UI state. Clear UI cache on **401/403 generation mismatch**. Align dashboard startup with **supervisor discovery** (same env vars / socket path as CLI).
+
+**Suggested phase:** Dashboard connection bootstrap; supervisor integration docs.
+
+---
+
+## WD15: Search / filter implemented as naive `SELECT *` with unbounded result sets
+
+**Description:** Searchable transcript is a v2 requirement. Loading entire transcript into browser memory or running unindexed `LIKE` across large tables blocks the relay event loop (if queries run in-process) or saturates IPC.
+
+**Risk level:** Medium
+
+**Warning signs:** UI freeze on first search; SQLite CPU spikes; OOM in browser for long-running spaces.
+
+**Prevention strategy:** **Pagination**, **FTS5** (or dedicated index) for full-text, **server-side limits**, debounced queries. Run heavy search **off hot relay path** (async worker or read-only connection with strict timeout) if profiling demands it.
+
+**Suggested phase:** Transcript search & storage optimization.
+
+---
+
+## WD16: Testing gap — E2E only in Node, never in a real browser
+
+**Description:** WebSocket logic tested with `ws` in Vitest but **Lit lifecycle**, **HMR**, and **browser WebSocket** semantics differ. Regressions slip until manual demo.
+
+**Risk level:** Medium
+
+**Warning signs:** No Playwright/Cypress in CI; all tests use mocked relay; flakiness only in manual QA.
+
+**Prevention strategy:** At least **one** E2E smoke: open dashboard, connect, receive seeded events. Run **production build** in E2E, not only dev server.
+
+**Suggested phase:** QA / CI hardening after first vertical slice.
+
+---
+
+## Historical — cross-cutting collaboration pitfalls
+
+The following remain important for agent-talkie overall and **interact** with dashboard work; they are not repeated in full here. See git history of this file (pre–2026-04-17) or internal design docs for narrative detail.
+
+| Id   | Topic | Dashboard interaction |
+|------|--------|------------------------|
+| CP1  | First session as relay host | Dashboard must not become implicit host; same supervisor rules. |
+| CP2  | Idle shutdown races | Extended by **WD1** (dashboard liveness). |
+| CP3  | Orphan / zombie relay | HMR + duplicate WS (**WD7**) confuses diagnosis. |
+| CP4  | Ordering / idempotency | Extended by **WD6** (push vs poll). |
+| CP5  | SQLite locking | Extended by **WD3**, **WD4** (second writer / polling). |
+| CP6  | Session identity | Applies if dashboard acts as human session (**WD2**). |
+| CP7  | Wire versioning | Extended by **WD12** (bundle skew). |
+| CP9  | Local vs remote trust | v2 localhost scope; still matters for **WD9**. |
+| CP10 | Orchestrator bottleneck | Avoid routing all dashboard traffic through orchestrator unnecessarily. |
+
+---
+
+## Sources & verification notes
+
+- **Project authority:** `.planning/PROJECT.md` — v2.0 web dashboard milestone, Lit + Vite reference, SQLite + WebSocket constraints, localhost scope.
+- **SQLite WAL / locking:** [SQLite WAL mode](https://www.sqlite.org/wal.html) — single-writer model supports **WD3**, **WD4**, **WD5** (HIGH confidence for locking semantics).
+- **WebSocket ordering:** RFC 6455 — ordered delivery per connection; supports **WD6** ordering discipline (HIGH confidence).
+- **Lit patterns:** Verify property/reactivity and lifecycle guidance against current [Lit documentation](https://lit.dev/docs/) during implementation (**WD11**, MEDIUM confidence for specific API names).
+
+---
+
+## Suggested phase → pitfall index
+
+| Thematic phase | Pitfalls |
+|----------------|----------|
+| Relay lifecycle & supervisor | WD1, WD14 |
+| Protocol / subscriber model | WD2, WD6, WD10 |
+| Persistence & SQLite access | WD3, WD4, WD15 |
+| Real-time fan-out & UI performance | WD5, WD16 |
+| Lit dashboard foundation | WD7, WD8, WD11 |
+| Security (localhost) | WD9, WD10 |
+| Monorepo, build, CI | WD12, WD13, WD16 |
