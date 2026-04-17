@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
-  "files": ["dist", "dist-app"],
+  "files": [
+    "dist",
+    "dist-app"
+  ],
   "scripts": {
     "dev": "vite",
     "build:lib": "vite build",
@@ -14,6 +17,7 @@
   },
   "dependencies": {
     "@agent-talkie/protocol": "0.0.0",
+    "@lit-labs/virtualizer": "^2.1.1",
     "lit": "3.3.2",
     "zod": "^4.3.6"
   },
