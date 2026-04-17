@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import openUrl from "open";
 import {
   ensureRelayRunning,
   getRelayStatus,
@@ -103,6 +104,23 @@ program
         return;
       }
       console.log(`ping ok port=${port}`);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("dashboard")
+  .description("Ensure relay is running and open the web dashboard")
+  .option("--no-open", "Print URL only; do not open a browser")
+  .action(async (opts: { open?: boolean }) => {
+    try {
+      const { port } = await ensureRelayRunning({});
+      const url = `http://127.0.0.1:${port}/dashboard`;
+      console.log(url);
+      if (opts.open !== false) {
+        await openUrl(url);
+      }
     } catch (e) {
       handleError(e);
     }
