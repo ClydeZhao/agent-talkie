@@ -1,3 +1,7 @@
+import { safeParseEnvelope, type Envelope } from "@agent-talkie/protocol";
+
+import type { TranscriptCatchupRow } from "../bridge/browser-session-bridge.js";
+
 /** JSON shape from GET /__agent-talkie/v1/oversight/space-summary (camelCase). */
 export type OversightMemberSnapshot = {
   sessionId: string;
@@ -34,12 +38,20 @@ export type RosterRow = {
   blockedReason: string;
 };
 
+export type TranscriptLine = {
+  dedupeKey: string;
+  receivedAtMs: number;
+  envelope: Envelope;
+};
+
 export class DashboardStore {
   readonly roster = new Map<string, RosterRow>();
-  transcriptRows: unknown[] = [];
+  activeSpaceId: string | null = null;
+  transcriptLines: TranscriptLine[] = [];
   errors: unknown[] = [];
   private readonly listeners = new Set<() => void>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private transcriptDedupe = new Set<string>();
 
   addListener(cb: () => void): () => void {
     this.listeners.add(cb);
@@ -56,6 +68,54 @@ export class DashboardStore {
         /* ignore */
       }
     }
+  }
+
+  setActiveSpaceId(id: string): void {
+    if (this.activeSpaceId === id) {
+      return;
+    }
+    this.transcriptDedupe.clear();
+    this.transcriptLines = [];
+    this.activeSpaceId = id;
+    this.notify();
+  }
+
+  appendTranscriptCatchup(row: TranscriptCatchupRow): void {
+    if (row.spaceId !== this.activeSpaceId) {
+      return;
+    }
+    const dedupeKey = `${row.spaceId}:${row.relaySeq}`;
+    if (this.transcriptDedupe.has(dedupeKey)) {
+      return;
+    }
+    const parsed = safeParseEnvelope(row.envelope);
+    if (!parsed.success) {
+      return;
+    }
+    this.transcriptDedupe.add(dedupeKey);
+    const receivedAtMs = Date.now();
+    this.transcriptLines = [
+      ...this.transcriptLines,
+      { dedupeKey, receivedAtMs, envelope: parsed.data },
+    ];
+    this.notify();
+  }
+
+  appendTranscriptEnvelope(env: Envelope): void {
+    if (env.spaceId !== undefined && env.spaceId !== this.activeSpaceId) {
+      return;
+    }
+    const dedupeKey = `${env.spaceId ?? "none"}:${env.id}`;
+    if (this.transcriptDedupe.has(dedupeKey)) {
+      return;
+    }
+    this.transcriptDedupe.add(dedupeKey);
+    const receivedAtMs = Date.now();
+    this.transcriptLines = [
+      ...this.transcriptLines,
+      { dedupeKey, receivedAtMs, envelope: env },
+    ];
+    this.notify();
   }
 
   hydrateFromSpaceSummary(
