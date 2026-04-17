@@ -56,13 +56,13 @@ Plans:
   1. User runs `talkie dashboard` and lands on a working dashboard URL for the local relay (browser opened or URL printed, documented behavior).
   2. In production-style runs, dashboard static assets are served from the same origin as the relay HTTP/WebSocket upgrade so the shell loads without a separate dev-server origin.
   3. Packaged paths (`npm install` / `npx`) resolve built assets so the initial layout and scripts load without 404s.
-**Plans**: TBD (target 3 plans: relay static `dist`; Vite build pipeline; CLI command + URL)
+**Plans:** 3 plans
 **UI hint**: yes
 
 Plans:
-- [ ] 08-01: Relay HTTP — serve `dashboard/dist` with correct upgrade/static interaction (`serve-static` or equivalent)
-- [ ] 08-02: Build — Vite production build into relay-served `dist`, CI builds dashboard + relay together
-- [ ] 08-03: CLI — `talkie dashboard` ensures relay, resolves asset base URL, opens browser or prints link
+- [ ] 08-01-PLAN.md — Relay：`sirv` 托管 `@agent-talkie/dashboard` 的 `dist-app`，`/dashboard` + SPA fallback，统一 HTTP 处理链与 404（CONN-03）
+- [ ] 08-02-PLAN.md — Dashboard：`vite.app.config.ts`（`base: '/dashboard/'`、`outDir: dist-app`）、双构建脚本、`demo` 生产 WS 同源、根 `build` 顺序（CONN-03）
+- [ ] 08-03-PLAN.md — CLI：`talkie dashboard`、`open@^11.0.0`、`--no-open`、Vitest 集成（CONN-04）
 
 ### Phase 9: Core oversight UI
 **Goal:** Primary oversight parity for roster, live transcript, collaboration metadata, and legible relay errors.
