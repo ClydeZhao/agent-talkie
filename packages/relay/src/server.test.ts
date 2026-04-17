@@ -10,6 +10,24 @@ function testDbPath(): string {
   return join(tmpdir(), `relay-test-${randomUUID()}.db`);
 }
 
+function httpOrigin(wsUrl: string): string {
+  return wsUrl.replace(/^ws:/, "http:");
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const { timeoutMs = 5000, ...rest } = init;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...rest, signal: ac.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 async function nextJson(ws: WebSocket, timeoutMs = 5000): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const to = setTimeout(() => reject(new Error("nextJson timeout")), timeoutMs);
@@ -280,5 +298,61 @@ describe("createRelayServer", () => {
 
     ws3.close();
     await srv.close();
+  });
+
+  describe("HTTP: health, /dashboard static, and 404", () => {
+    it("returns 200 JSON for GET /__agent-talkie/v1/health with matching generation", async () => {
+      const token = "a".repeat(32);
+      const srv = await createRelayServer({
+        dbPath: testDbPath(),
+        port: 0,
+        relayGenerationToken: token,
+      });
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/health?generation=${encodeURIComponent(token)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      const body = (await res.json()) as { ok?: boolean; generation?: string };
+      expect(body.ok).toBe(true);
+      expect(body.generation).toBe(token);
+      await srv.close();
+    });
+
+    it("serves SPA index.html for GET /dashboard and deep routes", async () => {
+      const token = "a".repeat(32);
+      const srv = await createRelayServer({
+        dbPath: testDbPath(),
+        port: 0,
+        relayGenerationToken: token,
+      });
+      const origin = httpOrigin(srv.url);
+      for (const path of ["/dashboard", "/dashboard/deep/route"]) {
+        const res = await fetchWithTimeout(`${origin}${path}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toContain("text/html");
+        const text = await res.text();
+        expect(text).toContain("Agent Talkie Dashboard");
+      }
+      await srv.close();
+    });
+
+    it("returns 404 for GET / and unknown paths", async () => {
+      const token = "a".repeat(32);
+      const srv = await createRelayServer({
+        dbPath: testDbPath(),
+        port: 0,
+        relayGenerationToken: token,
+      });
+      const origin = httpOrigin(srv.url);
+      for (const path of ["/", "/nope"]) {
+        const res = await fetchWithTimeout(`${origin}${path}`);
+        expect(res.status).toBe(404);
+        const text = await res.text();
+        expect(text).toBe("Not Found");
+      }
+      await srv.close();
+    });
   });
 });
