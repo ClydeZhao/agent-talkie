@@ -47,6 +47,22 @@ describe("oversight repository", () => {
     expect(summary!.members.length).toBeGreaterThanOrEqual(2);
     expect("ownerSessionId" in summary!).toBe(true);
     expect(summary!.orchestratorSessionId).toBeNull();
+
+    const byName = new Map(
+      summary!.members.map((m) => [m.displayName, m] as const),
+    );
+    const alice = byName.get("Alice");
+    const bob = byName.get("Bob");
+    expect(alice).toBeDefined();
+    expect(bob).toBeDefined();
+    for (const m of [alice!, bob!]) {
+      expect(m).toHaveProperty("runtime");
+      expect(m).toHaveProperty("workspaceLabel");
+    }
+    expect(alice!.runtime).toBe("r1");
+    expect(alice!.workspaceLabel).toBe("w");
+    expect(bob!.runtime).toBe("r2");
+    expect(bob!.workspaceLabel).toBe("w");
   });
 
   it("listOversightTranscriptTailBySlug returns at most limit entries oldest-first with createdAtMs", () => {
