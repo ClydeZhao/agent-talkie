@@ -62,7 +62,7 @@ Plans:
 Plans:
 - [x] 08-01-PLAN.md — Relay：`sirv` 托管 `@agent-talkie/dashboard` 的 `dist-app`，`/dashboard` + SPA fallback，统一 HTTP 处理链与 404（CONN-03）
 - [x] 08-02-PLAN.md — Dashboard：`vite.app.config.ts`（`base: '/dashboard/'`、`outDir: dist-app`）、双构建脚本、`demo` 生产 WS 同源、根 `build` 顺序（CONN-03）
-- [ ] 08-03-PLAN.md — CLI：`talkie dashboard`、`open@^11.0.0`、`--no-open`、Vitest 集成（CONN-04）
+- [x] 08-03-PLAN.md — CLI：`talkie dashboard`、`open@^11.0.0`、`--no-open`、Vitest 集成（CONN-04）
 
 ### Phase 9: Core oversight UI
 **Goal:** Primary oversight parity for roster, live transcript, collaboration metadata, and legible relay errors.
