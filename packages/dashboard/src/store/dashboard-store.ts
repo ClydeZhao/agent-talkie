@@ -5,6 +5,8 @@ import {
 } from "@agent-talkie/protocol";
 
 import type { TranscriptCatchupRow } from "../bridge/browser-session-bridge.js";
+import type { ProtocolErrorWire } from "../bridge/wire-schemas.js";
+import { getRelayErrorCopy } from "../errors/relay-error-copy.js";
 
 /** Coalesces rapid `metadata.patch` UI updates (OVER-04 / D-17). */
 export const METADATA_UI_DEBOUNCE_MS = 200;
@@ -51,15 +53,28 @@ export type TranscriptLine = {
   envelope: Envelope;
 };
 
+export type DashboardProtocolErrorItem = {
+  id: string;
+  code: string;
+  title: string;
+  hint: string;
+  sticky: boolean;
+  receivedAtMs: number;
+};
+
 export class DashboardStore {
   readonly roster = new Map<string, RosterRow>();
   activeSpaceId: string | null = null;
   transcriptLines: TranscriptLine[] = [];
-  errors: unknown[] = [];
+  errors: DashboardProtocolErrorItem[] = [];
   private readonly listeners = new Set<() => void>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private transcriptDedupe = new Set<string>();
   private metadataUiDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly errorDismissTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   addListener(cb: () => void): () => void {
     this.listeners.add(cb);
@@ -85,6 +100,48 @@ export class DashboardStore {
     this.transcriptDedupe.clear();
     this.transcriptLines = [];
     this.activeSpaceId = id;
+    this.notify();
+  }
+
+  pushProtocolError(wire: ProtocolErrorWire): void {
+    const copy = getRelayErrorCopy(wire.error);
+    const id = crypto.randomUUID();
+    const item: DashboardProtocolErrorItem = {
+      id,
+      code: wire.error,
+      title: copy.title,
+      hint: copy.hint,
+      sticky: copy.sticky,
+      receivedAtMs: Date.now(),
+    };
+    this.errors = [item, ...this.errors].slice(0, 3);
+    const kept = new Set(this.errors.map((e) => e.id));
+    for (const [eid, handle] of this.errorDismissTimers) {
+      if (!kept.has(eid)) {
+        clearTimeout(handle);
+        this.errorDismissTimers.delete(eid);
+      }
+    }
+    if (!copy.sticky) {
+      const t = window.setTimeout(() => {
+        this.errorDismissTimers.delete(id);
+        this.dismissError(id);
+      }, 8000);
+      this.errorDismissTimers.set(id, t);
+    }
+    this.notify();
+  }
+
+  dismissError(id: string): void {
+    if (!this.errors.some((e) => e.id === id)) {
+      return;
+    }
+    this.errors = this.errors.filter((e) => e.id !== id);
+    const t = this.errorDismissTimers.get(id);
+    if (t !== undefined) {
+      clearTimeout(t);
+      this.errorDismissTimers.delete(id);
+    }
     this.notify();
   }
 
