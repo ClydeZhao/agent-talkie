@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Web Dashboard
-status: Defining requirements
+status: Roadmap ready — plan Phase 7
 last_updated: "2026-04-17"
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
-  total_plans: 0
+  total_plans: 19
   completed_plans: 0
   percent: 0
 ---
@@ -21,10 +21,10 @@ See: .planning/PROJECT.md (updated 2026-04-17)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 7 — Browser connection & session bridge
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-17 — Milestone v2.0 started
+Status: Not started (roadmap defined)
+Last activity: 2026-04-17 — v2.0 ROADMAP.md phases 7–12 created; traceability updated
 
 ## Accumulated Context
 
@@ -34,3 +34,5 @@ Known tech debt carried forward:
 - Phase 5 human UAT for live adapter concurrency not operator-confirmed
 - `talkie watch` still lacks an automated CLI integration test
 - Peer-first question resolution is architecturally possible but not explicitly enforced
+
+v2.0 roadmap: 6 phases (7–12), 17 requirements (CONN/OVER/CTRL/MGMT), 19 placeholder plans — see `.planning/ROADMAP.md`.

@@ -74,29 +74,29 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONN-01 | — | Pending |
-| CONN-02 | — | Pending |
-| CONN-03 | — | Pending |
-| CONN-04 | — | Pending |
-| OVER-01 | — | Pending |
-| OVER-02 | — | Pending |
-| OVER-03 | — | Pending |
-| OVER-04 | — | Pending |
-| OVER-05 | — | Pending |
-| OVER-06 | — | Pending |
-| OVER-07 | — | Pending |
-| CTRL-01 | — | Pending |
-| CTRL-02 | — | Pending |
-| CTRL-03 | — | Pending |
-| MGMT-01 | — | Pending |
-| MGMT-02 | — | Pending |
-| MGMT-03 | — | Pending |
+| CONN-01 | Phase 7 | Pending |
+| CONN-02 | Phase 7 | Pending |
+| CONN-03 | Phase 8 | Pending |
+| CONN-04 | Phase 8 | Pending |
+| OVER-01 | Phase 9 | Pending |
+| OVER-02 | Phase 9 | Pending |
+| OVER-03 | Phase 12 | Pending |
+| OVER-04 | Phase 9 | Pending |
+| OVER-05 | Phase 12 | Pending |
+| OVER-06 | Phase 12 | Pending |
+| OVER-07 | Phase 9 | Pending |
+| CTRL-01 | Phase 10 | Pending |
+| CTRL-02 | Phase 10 | Pending |
+| CTRL-03 | Phase 10 | Pending |
+| MGMT-01 | Phase 11 | Pending |
+| MGMT-02 | Phase 11 | Pending |
+| MGMT-03 | Phase 11 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-17*
-*Last updated: 2026-04-17 after initial definition*
+*Last updated: 2026-04-17 — v2.0 roadmap traceability (phases 7–12)*
