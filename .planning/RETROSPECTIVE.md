@@ -24,7 +24,7 @@
 - **Adapter-as-edge pattern:** Both adapters (Codex, Cursor MCP) connected through the same client+WebSocket path, validating the architecture
 
 ### What Was Inefficient
-- **Phase 4 skipped formal verification:** 10 requirements lack VERIFICATION.md — code and tests exist but the formal process was skipped, creating audit noise
+- **Phase 4 formal verification was delayed:** the first milestone close-out skipped `04-VERIFICATION.md`, and the project had to add it during post-ship stabilization on 2026-04-17
 - **Phase 5 human UAT not operator-confirmed:** Automated tests pass (5/5 criteria) but live concurrent adapter runs were never confirmed by a human operator
 - **PROJECT.md requirements drift:** Active requirements in PROJECT.md fell behind REQUIREMENTS.md updates during mid-milestone phases; reconciliation needed at completion
 - **Plan granularity inconsistent:** Phase 1 had 4 plans for 10 requirements; Phase 5 had 5 plans for 5 requirements. Coarser granularity in early phases worked better for velocity

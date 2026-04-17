@@ -1,6 +1,6 @@
 # Milestones
 
-## v1.0 MVP (Shipped: 2026-04-15)
+## v1.0 MVP (Shipped: 2026-04-15, Stabilized: 2026-04-17)
 
 **Phases completed:** 6 phases, 20 plans, 51 tasks
 
@@ -26,5 +26,6 @@
 - `talkie watch` delivers a split-pane terminal supervisor: eight-row participant grid with attention labels (blocked vs possibly-blocked) and a scrolling timeline tail parsed from SQLite, driven by a human TalkieSessionClient on the local relay.
 - openRelayDatabase now creates data directory and runs migrations before queries, with regression test for fresh-dir scenario
 - Removed unused @agent-talkie/protocol from CLI dependencies, tsup externals, and pretest script
+- Post-ship baseline alignment added Phase 4 formal verification, surfaced `session.resume` in the shared client, and wired persisted adapter resume for Codex and Cursor MCP
 
 ---

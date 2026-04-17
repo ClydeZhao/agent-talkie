@@ -60,8 +60,8 @@ Architecture: relay-based, local-first, zero-external-services. WebSocket relay 
 v1 simplification: one session per space. Multi-space deferred.
 
 Known tech debt from v1.0:
-- Phase 4 lacks formal VERIFICATION.md (10 requirements verified via code/tests only)
 - Phase 5 human UAT for live adapter concurrency not operator-confirmed
+- `talkie watch` still lacks an automated CLI integration test
 - Peer-first question resolution is architecturally possible but not explicitly enforced
 
 ## Constraints
@@ -106,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-15 after v1.0 milestone*
+*Last updated: 2026-04-17 after v1.0 baseline stabilization*
