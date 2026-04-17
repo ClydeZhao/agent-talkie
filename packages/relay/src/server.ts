@@ -1,5 +1,7 @@
 import http from "node:http";
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import {
   agreeProtocolVersion,
   buildVersionMismatchFailure,
@@ -17,6 +19,7 @@ import {
   openDatabase,
 } from "@agent-talkie/persistence";
 import type Database from "better-sqlite3";
+import sirv from "sirv";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { sendTranscriptCatchUp } from "./catch-up.js";
 import { hashReconnectSecret, verifyReconnectSecret } from "./reconnect-secret.js";
@@ -31,6 +34,22 @@ import {
   pruneExpiredArchivedSpaces,
 } from "./space-lifecycle.js";
 import { parseAndValidateEnvelope } from "./validation.js";
+
+const require = createRequire(import.meta.url);
+
+function resolveDashboardAppDir(): string {
+  const pkg = require.resolve("@agent-talkie/dashboard/package.json");
+  return join(dirname(pkg), "dist-app");
+}
+
+let dashboardSirv: ReturnType<typeof sirv> | undefined;
+
+function getDashboardSirv(): ReturnType<typeof sirv> {
+  if (!dashboardSirv) {
+    dashboardSirv = sirv(resolveDashboardAppDir(), { single: true, dev: false });
+  }
+  return dashboardSirv;
+}
 
 /** Post-bind frames: JSON → {@link parseAndValidateEnvelope} (wraps `safeParseEnvelope`). */
 export const DEFAULT_RELAY_IDLE_SHUTDOWN_MS = 300000;
@@ -202,15 +221,19 @@ export async function createRelayServer(opts: {
   const server = http.createServer();
 
   const token = opts.relayGenerationToken;
-  if (typeof token === "string" && token.length > 0) {
-    server.on("request", (req, res) => {
-      if (req.headers.upgrade?.toLowerCase() === "websocket") {
-        return;
-      }
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      if (url.pathname !== "/__agent-talkie/v1/health") {
-        return;
-      }
+
+  server.on("request", (req, res) => {
+    if ((req.headers.upgrade ?? "").toLowerCase() === "websocket") {
+      return;
+    }
+
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+
+    if (
+      url.pathname === "/__agent-talkie/v1/health" &&
+      typeof token === "string" &&
+      token.length > 0
+    ) {
       if (req.method === "GET") {
         const gen = url.searchParams.get("generation");
         if (gen === token) {
@@ -224,8 +247,30 @@ export async function createRelayServer(opts: {
       }
       res.writeHead(405, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false }));
-    });
-  }
+      return;
+    }
+
+    if (url.pathname === "/dashboard" || url.pathname.startsWith("/dashboard/")) {
+      const assets = getDashboardSirv();
+      const originalUrl = req.url;
+      const under = url.pathname.slice("/dashboard".length) || "/";
+      req.url = under + url.search;
+      const restoreUrl = () => {
+        req.url = originalUrl;
+      };
+      res.once("finish", restoreUrl);
+      res.once("close", restoreUrl);
+      assets(req, res, () => {
+        restoreUrl();
+        res.statusCode = 404;
+        res.end();
+      });
+      return;
+    }
+
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not Found");
+  });
 
   const wss = new WebSocketServer({ server });
 

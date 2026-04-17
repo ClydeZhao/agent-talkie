@@ -19,13 +19,15 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsup",
-    "pretest": "npm run build -w @agent-talkie/protocol && npm run build -w @agent-talkie/persistence",
+    "pretest": "npm run build -w @agent-talkie/protocol && npm run build -w @agent-talkie/persistence && npm run build -w @agent-talkie/dashboard",
     "test": "vitest run"
   },
   "dependencies": {
+    "@agent-talkie/dashboard": "0.0.0",
     "@agent-talkie/persistence": "0.0.0",
     "@agent-talkie/protocol": "0.0.0",
     "env-paths": "4.0.0",
+    "sirv": "^3.0.2",
     "ws": "^8.20.0"
   },
   "devDependencies": {
