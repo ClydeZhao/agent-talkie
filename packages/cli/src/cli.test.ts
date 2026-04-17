@@ -92,4 +92,18 @@ describe("talkie CLI", () => {
     expect(ping.status).toBe(0);
     expect(ping.stdout.trim()).toMatch(/^ping ok port=\d+$/);
   });
+
+  it("dashboard --no-open prints dashboard URL with isolated data dir", () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-"));
+    const env = {
+      AGENT_TALKIE_DATA_DIR: dataDir,
+      /** Ephemeral port so tests pass when 18765 is already in use locally. */
+      AGENT_TALKIE_RELAY_PORT: "0",
+    };
+    const dash = runCli(["dashboard", "--no-open"], env);
+    expect(dash.status).toBe(0);
+    expect(dash.stdout.trim()).toMatch(
+      /^http:\/\/127\.0\.0\.1:\d+\/dashboard$/,
+    );
+  });
 });
