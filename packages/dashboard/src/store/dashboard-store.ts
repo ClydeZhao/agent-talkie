@@ -1,6 +1,13 @@
-import { safeParseEnvelope, type Envelope } from "@agent-talkie/protocol";
+import {
+  metadataPatchPayloadSchema,
+  safeParseEnvelope,
+  type Envelope,
+} from "@agent-talkie/protocol";
 
 import type { TranscriptCatchupRow } from "../bridge/browser-session-bridge.js";
+
+/** Coalesces rapid `metadata.patch` UI updates (OVER-04 / D-17). */
+export const METADATA_UI_DEBOUNCE_MS = 200;
 
 /** JSON shape from GET /__agent-talkie/v1/oversight/space-summary (camelCase). */
 export type OversightMemberSnapshot = {
@@ -52,6 +59,7 @@ export class DashboardStore {
   private readonly listeners = new Set<() => void>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private transcriptDedupe = new Set<string>();
+  private metadataUiDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   addListener(cb: () => void): () => void {
     this.listeners.add(cb);
@@ -101,6 +109,69 @@ export class DashboardStore {
     this.notify();
   }
 
+  applyMetadataPatchFromEnvelope(envelope: Envelope): void {
+    if (envelope.type !== "metadata.patch") {
+      return;
+    }
+    const parsed = metadataPatchPayloadSchema.safeParse(envelope.payload);
+    if (!parsed.success) {
+      return;
+    }
+    const data = parsed.data;
+    const targetSessionId =
+      data.namespace === "profile" && data.targetSessionId !== undefined
+        ? data.targetSessionId
+        : envelope.sessionId;
+    if (targetSessionId === undefined || targetSessionId === "") {
+      return;
+    }
+    let row = this.roster.get(targetSessionId);
+    if (!row) {
+      row = {
+        sessionId: targetSessionId,
+        displayName: `${targetSessionId.slice(0, 8)}…`,
+        isHuman: false,
+        runtime: "",
+        workspaceLabel: "",
+        orchestrator: false,
+        owner: false,
+        role: "",
+        focus: "",
+        progress: "idle",
+        blockedReason: "",
+      };
+    }
+    if (data.namespace === "profile") {
+      const p = data.patch;
+      row = {
+        ...row,
+        ...(p.role !== undefined ? { role: p.role } : {}),
+        ...(p.focus !== undefined ? { focus: p.focus } : {}),
+      };
+    } else {
+      const p = data.patch;
+      row = {
+        ...row,
+        ...(p.progress !== undefined ? { progress: p.progress } : {}),
+        ...(p.blockedReason !== undefined
+          ? { blockedReason: p.blockedReason }
+          : {}),
+      };
+    }
+    this.roster.set(targetSessionId, row);
+    this.scheduleMetadataUiNotify();
+  }
+
+  private scheduleMetadataUiNotify(): void {
+    if (this.metadataUiDebounceTimer !== null) {
+      clearTimeout(this.metadataUiDebounceTimer);
+    }
+    this.metadataUiDebounceTimer = window.setTimeout(() => {
+      this.metadataUiDebounceTimer = null;
+      this.notify();
+    }, METADATA_UI_DEBOUNCE_MS);
+  }
+
   appendTranscriptEnvelope(env: Envelope): void {
     if (env.spaceId !== undefined && env.spaceId !== this.activeSpaceId) {
       return;
@@ -123,6 +194,10 @@ export class DashboardStore {
     _selfSessionId: string,
   ): void {
     /* _selfSessionId reserved for future “self” row styling (09-03+). */
+    if (this.metadataUiDebounceTimer !== null) {
+      clearTimeout(this.metadataUiDebounceTimer);
+      this.metadataUiDebounceTimer = null;
+    }
     this.roster.clear();
     const orch = summary.orchestratorSessionId;
     const owner = summary.ownerSessionId;
