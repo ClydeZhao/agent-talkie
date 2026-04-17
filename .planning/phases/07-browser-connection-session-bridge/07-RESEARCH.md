@@ -236,22 +236,19 @@ sendJson(opts.ws, {
 
 **If A3 is wrong:** Would require protocol change (e.g. generation in `handshake.ack`) — out of current CONTEXT.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Where does the dashboard obtain the initial `generation` token for `sessionStorage` and reconnect comparison (D-12)?**  
    - **What we know:** Token exists in supervisor lockfile and `relay.ready` IPC [VERIFIED: `daemon.ts`, `ensure-relay.ts`]; health endpoint requires it [VERIFIED: `server.ts`].  
-   - **What's unclear:** Pure browser dev (Vite only) has no lockfile read.  
-   - **Recommendation:** PLAN should specify: dev `import.meta.env`, query string from `talkie dashboard` (Phase 8), or temporary dev-only endpoint — and store beside session secrets once known.
+   - **RESOLVED:** Plans implement dual bootstrap: `?generation=` URL query param (highest priority) OR `import.meta.env.VITE_RELAY_GENERATION` (Vite env inject). Stored in `sessionStorage` via `RELAY_GENERATION_KEY`. Phase 8 (`talkie dashboard` CLI) will supply the token to the browser URL.
 
 2. **Should Phase 7 call HTTP health before each reconnect attempt?**  
    - **What we know:** CLI uses health for liveness [VERIFIED: `cli.ts`, `liveness.ts`].  
-   - **What's unclear:** CORS same-origin — OK when relay serves static assets (Phase 8); cross-origin dev may need Vite proxy.  
-   - **Recommendation:** Document in PLAN; use same-origin policy as success criterion.
+   - **RESOLVED:** Yes — Plan 03 calls `probeRelayGenerationHealth` before each reconnect attempt when a stored generation exists. CORS handled via Vite dev proxy in Plan 01. Same-origin in production (Phase 8).
 
 3. **Is tail-100 catch-up enough for CONN-02 “gap-fill,” or do we need client-initiated `transcript.query` in Phase 7?**  
    - **What we know:** Resume path only uses `sendTranscriptCatchUp` [VERIFIED: `server.ts`].  
-   - **What's unclear:** Very chatty spaces during long offline periods.  
-   - **Recommendation:** Phase 7 satisfies CONN-02 with **deduped tail**; defer `transcript.query` gap-fill to Phase 9+ unless UAT fails.
+   - **RESOLVED:** Phase 7 satisfies CONN-02 with deduped tail (Plan 03 implements `relaySeq` cursor and dedupe). `transcript.query` gap-fill deferred to Phase 9+ unless UAT reveals gaps exceeding tail-100 window.
 
 ## Environment Availability
 
