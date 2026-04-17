@@ -16,7 +16,7 @@ Requirements for web dashboard milestone. Each maps to roadmap phases.
 
 ### Monitoring & Oversight
 
-- [ ] **OVER-01**: User sees live session roster with runtime, workspace, and role metadata
+- [x] **OVER-01**: User sees live session roster with runtime, workspace, and role metadata
 - [ ] **OVER-02**: User sees real-time scrolling transcript timeline with catch-up on connect
 - [ ] **OVER-03**: User can search and filter transcript by sender, kind, and time window
 - [ ] **OVER-04**: User sees collaboration metadata at a glance (role, focus, progress, blocked)
@@ -78,7 +78,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | CONN-02 | Phase 7 | Complete |
 | CONN-03 | Phase 8 | Complete |
 | CONN-04 | Phase 8 | Complete |
-| OVER-01 | Phase 9 | Pending |
+| OVER-01 | Phase 9 | Complete |
 | OVER-02 | Phase 9 | Pending |
 | OVER-03 | Phase 12 | Pending |
 | OVER-04 | Phase 9 | Pending |
