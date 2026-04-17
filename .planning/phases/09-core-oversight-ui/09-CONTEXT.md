@@ -21,7 +21,7 @@ Deliver the core oversight UI for the dashboard: a live session roster with runt
 
 - **D-04:** Compact card-list in the left panel. Each entry is a horizontal row showing: displayName, runtime badge (e.g. "cursor", "codex", "browser"), workspace label, and inline metadata chips.
 - **D-05:** Session type distinction via leading icon: person icon for `isHuman: true` sessions, bot icon for agent sessions. Orchestrator marked with a crown/star overlay badge on the icon.
-- **D-06:** Roster updates reactively from `BrowserSessionBridge.onEnvelope()` — listen for `space.joined`, `space.left`, and `metadata.patch` events to add/remove/update entries. Initial state populated from catch-up transcript on first connect.
+- **D-06:** Roster initial state loaded via HTTP snapshot (`GET /__agent-talkie/v1/oversight/space-summary?slug=`) on connect, then refreshed by periodic polling (~10s). Live `metadata.patch` envelopes via `onEnvelope()` update individual entries between polls. Note: research confirmed that `space.joined`/`space.left` are NOT broadcast to other sockets and NOT written to transcript, so catch-up reconstruction is not viable for roster — HTTP snapshot is the reliable data source.
 - **D-07:** Roster renders as a native Lit component (`<talkie-roster>`) containing `<talkie-roster-entry>` children. No Shoelace dependency for roster — keep it lightweight with custom CSS.
 
 ### Transcript Timeline (OVER-02)
@@ -43,14 +43,14 @@ Deliver the core oversight UI for the dashboard: a live session roster with runt
 ### Error UX (OVER-07)
 
 - **D-18:** Protocol error codes mapped to operator-friendly messages in a static lookup table. Error map covers all known codes: `no_orchestrator` → "No orchestrator designated — assign one to route messages", `not_in_space` → "Session is not in this space", `orchestrator_offline` → "Orchestrator is offline — messages cannot be delivered", `not_space_owner` → "Only the space owner can perform this action", etc.
-- **D-19:** Transient errors (e.g. `invalid_envelope`, `envelope_version_mismatch`) shown as auto-dismissing notification in the error strip (8 second timeout). Session-breaking errors (e.g. `resume_rejected`, `not_in_space` for self) shown as sticky notification requiring user action (refresh or re-join).
+- **D-19:** Transient errors (e.g. `invalid_envelope`) shown as auto-dismissing notification in the error strip (8 second timeout). Session-breaking errors (e.g. `resume_rejected`, `not_in_space` for self, `envelope_version_mismatch`) shown as sticky notification requiring user action (refresh or re-join). Note: `envelope_version_mismatch` is sticky because it means the client's protocol version is incompatible — aligns with Phase 7 D-07 (non-dismissible banner for protocol mismatch).
 - **D-20:** Error strip component: `<talkie-error-bar>` renders a stack of error items, each with the mapped message and an optional recovery hint. Latest error on top; max 3 visible, older ones collapsed.
 - **D-21:** Errors that arrive as protocol.error frames via the bridge are intercepted before normal envelope dispatch and routed to the error bar. The bridge already detects `protocol.error` type in `dispatchPostHandshake`.
 
 ### Data Flow Architecture
 
 - **D-22:** Centralized reactive store (Lit reactive controller or simple event-driven state class) that the bridge feeds and all UI components consume. Bridge → Store → Components. Store holds: roster entries (Map<sessionId, RosterEntry>), transcript entries (ordered array), active errors (array), space metadata.
-- **D-23:** The store reconstructs roster state from catch-up transcript on initial connect — parsing `space.joined`, `metadata.patch`, and `session.register` envelopes from history. After catch-up, live events maintain the state incrementally.
+- **D-23:** The store initializes roster from HTTP snapshot on connect (via the space-summary endpoint), then keeps it updated via periodic polling (~10s) and live `metadata.patch` envelopes. Transcript state is reconstructed from catch-up messages, then live envelopes append. Orchestrator identity comes from the space-summary snapshot (`orchestratorSessionId` field).
 
 ### Agent's Discretion
 

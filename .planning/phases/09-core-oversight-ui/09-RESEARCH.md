@@ -219,21 +219,16 @@ export type TranscriptCatchupRow = {
 | A1 | `@lit-labs/virtualizer` 在 Lit 3 下以 `<lit-virtualizer>` + `renderItem` 为主流集成方式 | Code Examples / Patterns | API 差异导致小量查文档成本 |
 | A2 | OpenClaw PR #23345 的 token 命名可直接借鉴 | Standard Stack | 仅影响视觉，不影响功能 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **初始名册数据源选 HTTP 还是新 wire？**  
-   - 已知：`getOversightSpaceSummaryBySlug` 已具备服务端模型 [VERIFIED: oversight.ts]。  
-   - 未知：relay 是否已有/愿意新增只读路由。  
-   - 建议：优先 **只读 HTTP**（与 CLI 同源、易缓存）；若坚持纯 WS，则定义 `oversight.snapshot` 类消息并版本化。
+1. **初始名册数据源选 HTTP 还是新 wire？**
+   - **RESOLVED:** 选 HTTP 只读路由。新增 `GET /__agent-talkie/v1/oversight/space-summary?slug=` 端点，复用已有 `getOversightSpaceSummaryBySlug` 函数。与 CLI 同源，避免协议变更。
 
-2. **其他客户端能否收到「某人加入 space」的 wire 通知？**  
-   - 当前 [VERIFIED: `server.ts` `dispatchValidatedEnvelope`]：`space.joined` / `space.left` **仅 `sendJson(ctx.ws, …)` 到发起方连接**，**不向空间内其他 socket 广播**。  
-   - 影响：已打开的 dashboard **不会**仅靠 WS 自动得知新成员加入，除非后续有 **fan-out 的 envelope**（例如某会话发消息经 `routeEnvelope` 广播）触发「见到新 sessionId」。  
-   - 建议：**初始 + 周期性 HTTP 快照**、或 **Phase 9/relay 小改动：成员变更广播**（需协议评审）二选一写入 PLAN。
+2. **其他客户端能否收到「某人加入 space」的 wire 通知？**
+   - **RESOLVED:** 不依赖 WS 广播。采用 HTTP 快照 + 10s 轮询模式检测成员变更。未来可考虑 relay 成员变更广播，但 Phase 9 不做协议变更。
 
-3. **Orchestrator 标记的数据来源？**  
-   - 已知：`OversightSpaceSummary.orchestratorSessionId` [VERIFIED: oversight.ts]。  
-   - 建议：与名册快照一并下发，或在 store 中监听 `orchestrator.designate` / `orchestrator.clear` 控制消息（若进 transcript）。
+3. **Orchestrator 标记的数据来源？**
+   - **RESOLVED:** 从 HTTP space-summary 快照的 `orchestratorSessionId` 字段获取，随轮询自动更新。`orchestrator.designate`/`orchestrator.clear` 控制消息若进 transcript 也可被 onEnvelope 捕获作为补充更新路径。
 
 ## Environment Availability
 
