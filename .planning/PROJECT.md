@@ -29,11 +29,15 @@ Sessions from different runtimes can collaborate directly through a shared space
 
 ### Active
 
-- [ ] Token/TLS/tunnel authentication for non-loopback relay connections
-- [ ] Invite-based space membership for cross-machine collaboration
-- [ ] Proactive orchestrator follow-ups and stalled-thread recovery
-- [ ] Web-based collaboration dashboard with richer oversight than CLI
-- [ ] Multi-space per session
+- [ ] Real-time session topology visualization (who's talking to whom)
+- [ ] Searchable/filterable collaboration transcript in web UI
+- [ ] Collaboration metadata at a glance (role, focus, progress, blocked)
+- [ ] Send messages to sessions as human participant from web dashboard
+- [ ] Designate/clear orchestrator from web dashboard
+- [ ] Invite/remove sessions from space via web dashboard
+- [ ] Create/destroy collaboration spaces via web dashboard
+- [ ] Live WebSocket feed for real-time dashboard updates
+- [ ] Web dashboard as primary oversight surface (CLI becomes fallback)
 
 ### Out of Scope
 
@@ -46,6 +50,24 @@ Sessions from different runtimes can collaborate directly through a shared space
 - General-purpose harness framework for agent behavior — keep boundary narrow
 - Firebase or proprietary realtime databases — avoid vendor lock-in
 - Explicit solo/local/team mode-switching UX — collaboration extends naturally via invite and join
+- Token/TLS/tunnel authentication for non-loopback relay — deferred, v2.0 is localhost-only
+- Invite-based space membership for cross-machine collaboration — deferred, requires remote relay
+- Proactive orchestrator follow-ups and stalled-thread recovery — deferred to future milestone
+- Multi-space per session — deferred to future milestone
+
+## Current Milestone: v2.0 Web Dashboard
+
+**Goal:** Ship a real-time, interactive web dashboard as the primary collaboration oversight and control surface, scoped to localhost relay.
+
+**Target features:**
+- Real-time session topology visualization
+- Searchable/filterable collaboration transcript
+- Collaboration metadata at a glance
+- Interactive controls: send messages, manage orchestrator, manage sessions/spaces
+- Live WebSocket feed
+- Dashboard as primary oversight surface (CLI becomes fallback)
+
+**Design reference:** OpenClaw (Lit Web Components + Vite)
 
 ## Context
 
@@ -106,4 +128,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-17 after v1.0 baseline stabilization*
+*Last updated: 2026-04-17 after v2.0 milestone start*

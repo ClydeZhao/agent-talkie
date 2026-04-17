@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: MVP
-status: Milestone v1.0 stabilized post-ship
+milestone: v2.0
+milestone_name: Web Dashboard
+status: Defining requirements
 last_updated: "2026-04-17"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 20
-  completed_plans: 20
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 ## Project Reference
@@ -17,24 +17,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-17)
 
 **Core value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
-**Current focus:** Preparing the next milestone from the stabilized v1.0 baseline
+**Current focus:** v2.0 Web Dashboard — real-time interactive oversight surface for localhost relay
 
-## Milestone v1.0 — Shipped and Stabilized
+## Current Position
 
-All 6 phases complete. 20 plans, 51 tasks, 44/44 requirements addressed. Tagged `v1.0`.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-17 — Milestone v2.0 started
 
-Post-archive alignment completed on 2026-04-17:
-- Phase 4 formal verification added
-- Client/session resume surfaced through `TalkieSessionClient.resume()`
-- Codex and Cursor MCP adapters now persist and resume session credentials
-- v1.0 audit updated to reflect the stabilized baseline
+## Accumulated Context
 
-Archived to `.planning/milestones/`:
-- `v1.0-ROADMAP.md`
-- `v1.0-REQUIREMENTS.md`
-- `v1.0-MILESTONE-AUDIT.md`
-- `v1.0-phases/` (all phase directories)
-
-## Next Steps
-
-Create a clean GSD mainline from the stabilized v1.0 baseline, then run `/gsd-new-milestone` to start v1.1.
+v1.0 shipped and stabilized with 6 phases, 20 plans, 51 tasks, 44 requirements.
+All v1.0 artifacts archived to `.planning/milestones/`.
+Known tech debt carried forward:
+- Phase 5 human UAT for live adapter concurrency not operator-confirmed
+- `talkie watch` still lacks an automated CLI integration test
+- Peer-first question resolution is architecturally possible but not explicitly enforced
