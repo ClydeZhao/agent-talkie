@@ -11,8 +11,8 @@ Requirements for web dashboard milestone. Each maps to roadmap phases.
 
 - [x] **CONN-01**: Dashboard connects to relay via WebSocket with live health indicator
 - [x] **CONN-02**: Dashboard auto-reconnects with gap-fill via relaySeq cursor
-- [ ] **CONN-03**: Relay serves dashboard static assets on same origin in production
-- [ ] **CONN-04**: User can open dashboard via `talkie dashboard` CLI command
+- [x] **CONN-03**: Relay serves dashboard static assets on same origin in production
+- [x] **CONN-04**: User can open dashboard via `talkie dashboard` CLI command
 
 ### Monitoring & Oversight
 
@@ -76,8 +76,8 @@ Deferred to future milestones. Tracked but not in current roadmap.
 |-------------|-------|--------|
 | CONN-01 | Phase 7 | Complete |
 | CONN-02 | Phase 7 | Complete |
-| CONN-03 | Phase 8 | Pending |
-| CONN-04 | Phase 8 | Pending |
+| CONN-03 | Phase 8 | Complete |
+| CONN-04 | Phase 8 | Complete |
 | OVER-01 | Phase 9 | Pending |
 | OVER-02 | Phase 9 | Pending |
 | OVER-03 | Phase 12 | Pending |
@@ -99,4 +99,4 @@ Deferred to future milestones. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-04-17*
-*Last updated: 2026-04-17 — v2.0 roadmap traceability (phases 7–12)*
+*Last updated: 2026-04-17 — Phase 8 verification closed CONN-03/04*

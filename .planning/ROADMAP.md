@@ -24,7 +24,7 @@
 **Milestone goal:** Real-time, interactive web dashboard as the primary collaboration oversight and control surface on localhost relay (CLI becomes fallback).
 
 - [x] **Phase 7: Browser connection & session bridge** — WebSocket session, health, reconnect, relaySeq gap-fill
-- [ ] **Phase 8: Dashboard distribution & CLI entry** — Same-origin static assets, `talkie dashboard`
+- [x] **Phase 8: Dashboard distribution & CLI entry** — Same-origin static assets, `talkie dashboard`
 - [ ] **Phase 9: Core oversight UI** — Roster, transcript tail, metadata chips, relay errors
 - [ ] **Phase 10: Interactive human controls** — Send, orchestrator designate/clear, idempotent retries
 - [ ] **Phase 11: Space & membership management** — Create/destroy spaces, invite/remove, space picker
@@ -56,7 +56,7 @@ Plans:
   1. User runs `talkie dashboard` and lands on a working dashboard URL for the local relay (browser opened or URL printed, documented behavior).
   2. In production-style runs, dashboard static assets are served from the same origin as the relay HTTP/WebSocket upgrade so the shell loads without a separate dev-server origin.
   3. Packaged paths (`npm install` / `npx`) resolve built assets so the initial layout and scripts load without 404s.
-**Plans:** 3 plans
+**Plans:** 3/3 plans executed
 **UI hint**: yes
 
 Plans:
@@ -140,8 +140,8 @@ Plans:
 | 4. Collaboration semantics, metadata & adapter edge | v1.0 | 3/3 | Complete | 2026-04-13 |
 | 5. Cross-runtime proof & human oversight | v1.0 | 5/5 | Complete | 2026-04-14 |
 | 6. Oversight CLI resilience & cleanup | v1.0 | 2/2 | Complete | 2026-04-15 |
-| 7. Browser connection & session bridge | v2.0 | 1/3 | In Progress|  |
-| 8. Dashboard distribution & CLI entry | v2.0 | 0/3 | Not started | - |
+| 7. Browser connection & session bridge | v2.0 | 3/3 | Complete | - |
+| 8. Dashboard distribution & CLI entry | v2.0 | 3/3 | Complete | 2026-04-17 |
 | 9. Core oversight UI | v2.0 | 0/4 | Not started | - |
 | 10. Interactive human controls | v2.0 | 0/3 | Not started | - |
 | 11. Space & membership management | v2.0 | 0/3 | Not started | - |

@@ -1,27 +1,33 @@
 ---
 phase: 08-dashboard-distribution-cli-entry
-verified: 2026-04-17T17:10:00Z
-status: human_needed
-score: 12/13
+verified: 2026-04-17T09:43:20Z
+status: passed
+score: 13/13 must-haves verified
 overrides_applied: 0
-human_verification:
+re_verification:
+  previous_status: human_needed
+  previous_score: 12/13
+  gaps_closed:
+    - "默认 `talkie dashboard` 浏览器 UAT 已完成：页面打开无白屏，显示 `Connected`。"
+    - "CLI 退出后 relay 继续监听；隔离数据目录下 delayed fetch 与 second-run 复用同一 pid/port 均通过。"
+  gaps_remaining: []
+  regressions: []
+human_verification_completed:
   - test: "在本机安装/构建后运行 `talkie dashboard`（不传 `--no-open`）"
-    expected: "系统浏览器打开 `http://127.0.0.1:<port>/dashboard`，页面无白屏，静态资源（`/dashboard/assets/*`）无 404"
-    why_human: "默认打开浏览器与真实渲染/网络面板无法在无头自动化中可靠断言为「可用产品体验」"
+    observed: "系统浏览器打开 `http://127.0.0.1:18765/dashboard`，页面无白屏，显示 `Connected`。"
   - test: "在同一 relay 上打开 dashboard 后确认 WebSocket 与 HTTP 同源（浏览器地址栏 host:port 与连接目标一致）"
-    expected: "连接建立，健康指示/桥接行为与 Phase 7 预期一致（非 Phase 8 回归）"
-    why_human: "实时连接与 UI 状态需真实浏览器与人工观察"
+    observed: "浏览器地址栏为 `127.0.0.1:18765/dashboard`，页面连接建立并显示健康状态；隔离数据目录复测确认 `talkie dashboard --no-open` 返回后 relay 继续在同一 host:port 提供 `/dashboard`。"
 ---
 
 # Phase 8: Dashboard distribution & CLI entry — Verification Report
 
 **Phase Goal:** Operators install once and open the dashboard from the CLI with production same-origin static hosting.
 
-**Verified:** 2026-04-17T17:10:00Z
+**Verified:** 2026-04-17T09:43:20Z
 
-**Status:** human_needed
+**Status:** passed
 
-**Re-verification:** No — initial verification
+**Re-verification:** Yes — closed the remaining browser UAT after fixing relay daemon persistence
 
 ## Goal Achievement
 
@@ -38,12 +44,12 @@ human_verification:
 | 7 | 仓库根 `npm run build` 在 relay 之前构建 dashboard | ✓ VERIFIED | 根 `package.json` `scripts.build` 中 `@agent-talkie/dashboard` 出现在 `@agent-talkie/relay` 之前 |
 | 8 | `talkie dashboard` 在 `ensureRelayRunning` 后向 stdout 打印 `http://127.0.0.1:<port>/dashboard` | ✓ VERIFIED | `packages/cli/src/cli.test.ts`：`dashboard --no-open` 与正则 `^http://127\.0\.0\.1:\d+/dashboard$` |
 | 9 | 传入 `--no-open` 时不调用打开浏览器逻辑 | ✓ VERIFIED | `cli.ts`：`opts.open !== false` 时才 `openUrl`；Commander 将 `--no-open` 映射为 `open === false` |
-| 10 | 命令非阻塞退出，relay 以 daemon 方式保持（与 `relay start`/`ping` 一致） | ✓ VERIFIED | `action` 内无长驻循环；与现有 `ensureRelayRunning` 用法一致；集成测试子进程正常退出 |
+| 10 | 命令非阻塞退出，relay 以 daemon 方式保持（与 `relay start`/`ping` 一致） | ✓ VERIFIED | 隔离 `AGENT_TALKIE_DATA_DIR` + ephemeral port 复测：`talkie dashboard --no-open` 退出后立即/延迟访问 `/dashboard` 均 200；第二次执行返回同一 URL，`relay.lock` 维持同一 pid/port |
 | 11 | （ROADMAP）生产形态下同源：静态与 WebSocket 升级共享 relay 的 HTTP 源 | ✓ VERIFIED | 静态由 relay 同端口 `sirv`；demo 生产 `ws(s)://location.host` |
 | 12 | （ROADMAP）`npm install` / workspace 下路径稳定解析到已构建 `dist-app` | ✓ VERIFIED | `resolveDashboardAppDir()` 使用 `createRequire` + `@agent-talkie/dashboard/package.json` + `dist-app`；`relay` `pretest` 构建 dashboard |
-| 13 | （ROADMAP SC1）用户执行默认 `talkie dashboard`（含打开浏览器）后进入**可用** dashboard（非仅 URL 正确） | ? NEEDS HUMAN | 自动化已验证 URL 与 HTML shell；浏览器内资源加载、交互与 WS 可用性见 **Human Verification** |
+| 13 | （ROADMAP SC1）用户执行默认 `talkie dashboard`（含打开浏览器）后进入**可用** dashboard（非仅 URL 正确） | ✓ VERIFIED | 人工 UAT：真实浏览器打开 `http://127.0.0.1:18765/dashboard`，页面无白屏并显示 `Connected`；结合隔离数据目录复测，确认默认路径在 CLI 退出后仍可访问 |
 
-**Score:** 12/13 — 第 13 项依赖人工验收后可为 VERIFIED。
+**Score:** 13/13
 
 ### Deferred Items
 
@@ -91,7 +97,7 @@ human_verification:
 | **CONN-03** | 08-01, 08-02 | Relay serves dashboard static assets on same origin in production | ✓ SATISFIED（实现） | relay `sirv` + `dist-app`；demo 生产 WS 同源；根构建顺序 |
 | **CONN-04** | 08-03 | User can open dashboard via `talkie dashboard` CLI command | ✓ SATISFIED（实现） | `dashboard` 命令、`open`、测试 `--no-open` URL |
 
-**文档一致性说明：** `.planning/REQUIREMENTS.md` 正文中 **CONN-03 / CONN-04 仍为 `[ ]` 未完成勾选**，Traceability 表仍为 `Pending`。与代码库现状不一致；建议在阶段收尾/编排中更新 REQUIREMENTS 与 STATE，避免跟踪表滞后。**本验证不因文档未勾选而否定实现完成度。**
+**文档一致性说明：** 本次已同步更新 `.planning/REQUIREMENTS.md` 与 `.planning/ROADMAP.md` 的 Phase 8 / CONN-03 / CONN-04 状态，消除先前“实现完成但文档未勾选”的滞后。
 
 **Orphaned（本 phase 映射但无 PLAN 声明）：** 无 — CONN-03、CONN-04 均出现在对应 PLAN frontmatter `requirements` 中。
 
@@ -101,18 +107,16 @@ human_verification:
 |------|------|---------|----------|--------|
 | — | — | — | — | 在抽样文件中未发现阻塞性 TODO/FIXME/空实现 |
 
-### Human Verification Required
+### Human Verification Completed
 
-见本文件 YAML `human_verification`：默认打开浏览器与真实页面可用性需人工确认一次。
+见本文件 YAML `human_verification_completed`：默认打开浏览器、真实页面可用性、以及 CLI 退出后 daemon 持续监听均已确认。
 
 ### Gaps Summary
 
-**代码层面无阻塞缺口**：静态托管、CLI 入口、构建产物与测试均与 PLAN 一致。
-
-待人工确认默认 `talkie dashboard` 的浏览器打开与页面端到端行为后，可将整体验收视为闭环；同时建议同步更新 `REQUIREMENTS.md` 中 CONN-03/04 勾选与 Traceability 状态。
+**闭环完成**：静态托管、CLI 入口、构建产物、自动化测试与浏览器人工 UAT 均与 PLAN 一致；Phase 8 剩余的人工作业项已关闭。
 
 ---
 
-_Verified: 2026-04-17T17:10:00Z_
+_Verified: 2026-04-17T09:43:20Z_
 
 _Verifier: Claude (gsd-verifier)_
