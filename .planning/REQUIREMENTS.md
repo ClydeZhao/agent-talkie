@@ -19,7 +19,7 @@ Requirements for web dashboard milestone. Each maps to roadmap phases.
 - [x] **OVER-01**: User sees live session roster with runtime, workspace, and role metadata
 - [x] **OVER-02**: User sees real-time scrolling transcript timeline with catch-up on connect
 - [ ] **OVER-03**: User can search and filter transcript by sender, kind, and time window
-- [ ] **OVER-04**: User sees collaboration metadata at a glance (role, focus, progress, blocked)
+- [x] **OVER-04**: User sees collaboration metadata at a glance (role, focus, progress, blocked)
 - [ ] **OVER-05**: User sees session topology graph showing who is talking to whom
 - [ ] **OVER-06**: User sees blocked/attention lane that surfaces stalled sessions
 - [ ] **OVER-07**: User sees legible relay errors (no_orchestrator, not_in_space, etc.)
@@ -81,7 +81,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | OVER-01 | Phase 9 | Complete |
 | OVER-02 | Phase 9 | Complete |
 | OVER-03 | Phase 12 | Pending |
-| OVER-04 | Phase 9 | Pending |
+| OVER-04 | Phase 9 | Complete |
 | OVER-05 | Phase 12 | Pending |
 | OVER-06 | Phase 12 | Pending |
 | OVER-07 | Phase 9 | Pending |
