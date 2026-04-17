@@ -44,7 +44,7 @@
 **UI hint**: yes
 
 Plans:
-- [ ] 07-01-PLAN.md — `@agent-talkie/dashboard` 包与 `BrowserSessionBridge`：握手、register/resume、join、分发与 catch-up 序号跟踪（Vitest）
+- [x] 07-01-PLAN.md — `@agent-talkie/dashboard` 包与 `BrowserSessionBridge`：握手、register/resume、join、分发与 catch-up 序号跟踪（Vitest）
 - [ ] 07-02-PLAN.md — Lit `talkie-connection-shell`、健康四态、generation/health 探测与协议不匹配横幅；demo 联调
 - [ ] 07-03-PLAN.md — 自动重连退避、`relaySeq` catch-up 去重、resume 失败清凭证、generation stale 停止重连
 
@@ -140,7 +140,7 @@ Plans:
 | 4. Collaboration semantics, metadata & adapter edge | v1.0 | 3/3 | Complete | 2026-04-13 |
 | 5. Cross-runtime proof & human oversight | v1.0 | 5/5 | Complete | 2026-04-14 |
 | 6. Oversight CLI resilience & cleanup | v1.0 | 2/2 | Complete | 2026-04-15 |
-| 7. Browser connection & session bridge | v2.0 | 0/3 | Not started | - |
+| 7. Browser connection & session bridge | v2.0 | 1/3 | In progress | - |
 | 8. Dashboard distribution & CLI entry | v2.0 | 0/3 | Not started | - |
 | 9. Core oversight UI | v2.0 | 0/4 | Not started | - |
 | 10. Interactive human controls | v2.0 | 0/3 | Not started | - |
