@@ -193,6 +193,14 @@ describe("BrowserSessionBridge", () => {
     });
     expect(bridge.getMaxRelaySeq()).toBe(7);
 
+    ws.simulateInbound({
+      type: "transcript.catchup",
+      spaceId: "space-1",
+      relaySeq: 7,
+      envelope: {},
+    });
+    expect(bridge.getMaxRelaySeq()).toBe(7);
+
     bridge.close();
   });
 

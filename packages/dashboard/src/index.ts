@@ -2,6 +2,7 @@ export {
   BrowserSessionBridge,
   type ConnectionHealthUiState,
   type StaleUiReason,
+  type TranscriptCatchupRow,
 } from "./bridge/browser-session-bridge.js";
 export {
   RECONNECT_SECRET_KEY,

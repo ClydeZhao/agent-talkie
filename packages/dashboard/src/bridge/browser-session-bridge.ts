@@ -6,8 +6,12 @@ import {
   type Envelope,
   type SessionResumeMessage,
 } from "@agent-talkie/protocol";
+import { deriveHttpOriginFromWsUrl } from "./derive-http-origin.js";
+import { nextReconnectDelayMs } from "./reconnect-schedule.js";
+import { probeRelayGenerationHealth } from "./relay-generation.js";
 import {
   RECONNECT_SECRET_KEY,
+  RELAY_GENERATION_KEY,
   SESSION_ID_KEY,
 } from "./session-storage-keys.js";
 import {
@@ -27,6 +31,12 @@ export type ConnectionHealthUiState =
 
 export type StaleUiReason = "protocol_version" | "relay_generation";
 
+export type TranscriptCatchupRow = {
+  spaceId: string;
+  relaySeq: number;
+  envelope: unknown;
+};
+
 function storageSet(key: string, value: string): void {
   if (typeof sessionStorage !== "undefined") {
     sessionStorage.setItem(key, value);
@@ -38,6 +48,12 @@ function storageGet(key: string): string | null {
     return null;
   }
   return sessionStorage.getItem(key);
+}
+
+function storageRemove(key: string): void {
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.removeItem(key);
+  }
 }
 
 export type BrowserSessionBridgeOptions = {
@@ -59,6 +75,7 @@ export class BrowserSessionBridge {
   private _staleReason: StaleUiReason | null = null;
   private readonly staleListeners = new Set<() => void>();
   private readonly envelopeHandlers = new Set<(env: Envelope) => void>();
+  private readonly catchupListeners = new Set<(row: TranscriptCatchupRow) => void>();
   private pendingJoin:
     | {
         resolve: (v: { spaceId: string; slug: string }) => void;
@@ -86,6 +103,12 @@ export class BrowserSessionBridge {
       }
     | undefined;
 
+  private _userRequestedClose = false;
+  private _autoReconnectEnabled = false;
+  private _joinSucceededAtLeastOnce = false;
+  private _reconnectAttemptIndex = 0;
+  private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(opts?: BrowserSessionBridgeOptions) {
     this.url = opts?.url ?? DEFAULT_URL;
     this.supportedVersions =
@@ -98,6 +121,13 @@ export class BrowserSessionBridge {
 
   getMaxRelaySeq(): number {
     return this.maxRelaySeq;
+  }
+
+  onTranscriptCatchup(cb: (row: TranscriptCatchupRow) => void): () => void {
+    this.catchupListeners.add(cb);
+    return () => {
+      this.catchupListeners.delete(cb);
+    };
   }
 
   onEnvelope(handler: (env: Envelope) => void): () => void {
@@ -169,13 +199,140 @@ export class BrowserSessionBridge {
     }
   }
 
-  async connect(): Promise<void> {
-    if (this.socket?.readyState === WebSocket.OPEN) {
+  private clearReconnectTimer(): void {
+    if (this._reconnectTimer !== null) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+  }
+
+  private rejectAllPending(reason: string): void {
+    const pend = this.pendingRegister;
+    this.pendingRegister = undefined;
+    if (pend) {
+      pend.reject(new Error(reason));
+    }
+    const pr = this.pendingResume;
+    this.pendingResume = undefined;
+    if (pr) {
+      pr.reject(new Error(reason));
+    }
+    const pj = this.pendingJoin;
+    this.pendingJoin = undefined;
+    if (pj) {
+      pj.reject(new Error(reason));
+    }
+  }
+
+  private handleTransportDrop(ws: WebSocket): void {
+    if (this.socket !== ws) {
+      return;
+    }
+    this.socket = null;
+    this.negotiatedVersion = null;
+    this.registeredSessionId = null;
+
+    try {
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+    } catch {
+      /* ignore */
+    }
+
+    this.rejectAllPending("WebSocket closed");
+
+    if (this._userRequestedClose) {
+      this.setHealth("disconnected");
+      return;
+    }
+    if (!this._joinSucceededAtLeastOnce || !this._autoReconnectEnabled) {
+      this.setHealth("disconnected");
+      return;
+    }
+    void this.beginReconnectBackoff();
+  }
+
+  private async beginReconnectBackoff(): Promise<void> {
+    if (this._userRequestedClose) {
+      return;
+    }
+    if (!this._autoReconnectEnabled || !this._joinSucceededAtLeastOnce) {
       return;
     }
 
-    this.setHealth("connecting");
+    this.setHealth("reconnecting");
 
+    const gen = storageGet(RELAY_GENERATION_KEY);
+    if (gen !== null && gen !== "") {
+      const ok = await probeRelayGenerationHealth(
+        deriveHttpOriginFromWsUrl(this.url),
+        gen,
+      );
+      if (this._userRequestedClose) {
+        return;
+      }
+      if (!ok) {
+        this.notifyRelayGenerationStale();
+        this.setHealth("disconnected");
+        return;
+      }
+    }
+
+    this.clearReconnectTimer();
+    const delay = nextReconnectDelayMs(this._reconnectAttemptIndex++);
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      void this.internalReconnect();
+    }, delay);
+  }
+
+  private async internalReconnect(): Promise<void> {
+    if (this._userRequestedClose) {
+      return;
+    }
+    if (!this._autoReconnectEnabled || !this._joinSucceededAtLeastOnce) {
+      return;
+    }
+
+    try {
+      await this.establishConnectionAndHandshake();
+
+      const sessionId = storageGet(SESSION_ID_KEY);
+      const reconnectSecret = storageGet(RECONNECT_SECRET_KEY);
+      if (sessionId && reconnectSecret) {
+        try {
+          await this.resume({ sessionId, reconnectSecret });
+        } catch {
+          storageRemove(SESSION_ID_KEY);
+          storageRemove(RECONNECT_SECRET_KEY);
+          await this.registerNewSession({
+            displayName: "Human",
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+          });
+        }
+      } else {
+        await this.registerNewSession({
+          displayName: "Human",
+          runtime: "browser",
+          workspaceLabel: "dashboard",
+        });
+      }
+      await this.joinSpace({
+        slug: "dashboard",
+        idempotencyKey: crypto.randomUUID(),
+      });
+      this._reconnectAttemptIndex = 0;
+    } catch {
+      if (this._userRequestedClose) {
+        return;
+      }
+      void this.beginReconnectBackoff();
+    }
+  }
+
+  private establishConnectionAndHandshake(): Promise<void> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.socket = ws;
@@ -189,7 +346,6 @@ export class BrowserSessionBridge {
           this.socket = null;
         }
         this.negotiatedVersion = null;
-        this.setHealth("disconnected");
         try {
           ws.close();
         } catch {
@@ -242,14 +398,14 @@ export class BrowserSessionBridge {
 
         this.negotiatedVersion = ack.data.negotiatedVersion;
 
-        ws.onerror = () => {
-          /* avoid unhandled errors on long-lived socket */
-        };
         ws.onmessage = (e) => {
           this.dispatchPostHandshake(e);
         };
+        ws.onerror = () => {
+          this.handleTransportDrop(ws);
+        };
         ws.onclose = () => {
-          this.setHealth("disconnected");
+          this.handleTransportDrop(ws);
         };
         resolve();
       };
@@ -266,6 +422,24 @@ export class BrowserSessionBridge {
         ws.onmessage = onHandshakeMessage;
       };
     });
+  }
+
+  async connect(opts?: { autoReconnect?: boolean }): Promise<void> {
+    this._userRequestedClose = false;
+    this._autoReconnectEnabled = opts?.autoReconnect === true;
+
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    this.setHealth("connecting");
+
+    try {
+      await this.establishConnectionAndHandshake();
+    } catch (err) {
+      this.setHealth("disconnected");
+      throw err;
+    }
   }
 
   private dispatchPostHandshake(ev: MessageEvent): void {
@@ -358,6 +532,7 @@ export class BrowserSessionBridge {
           const parsedJoin = spaceJoinedWireSchema.safeParse(parsed);
           if (parsedJoin.success) {
             this.pendingJoin = undefined;
+            this._joinSucceededAtLeastOnce = true;
             this.setHealth("connected");
             pj.resolve({
               spaceId: parsedJoin.data.spaceId,
@@ -378,8 +553,22 @@ export class BrowserSessionBridge {
 
     const catchup = transcriptCatchupMessageSchema.safeParse(parsed);
     if (catchup.success) {
-      if (catchup.data.relaySeq > this.maxRelaySeq) {
-        this.maxRelaySeq = catchup.data.relaySeq;
+      const prev = this.maxRelaySeq;
+      const seq = catchup.data.relaySeq;
+      if (seq > prev) {
+        this.maxRelaySeq = seq;
+        const row: TranscriptCatchupRow = {
+          spaceId: catchup.data.spaceId,
+          relaySeq: seq,
+          envelope: catchup.data.envelope,
+        };
+        for (const cb of this.catchupListeners) {
+          try {
+            cb(row);
+          } catch {
+            /* ignore */
+          }
+        }
       }
       return;
     }
@@ -514,7 +703,12 @@ export class BrowserSessionBridge {
   }
 
   close(): void {
+    this._userRequestedClose = true;
+    this.clearReconnectTimer();
+    this._joinSucceededAtLeastOnce = false;
+    this._reconnectAttemptIndex = 0;
     this.setHealth("disconnected");
+
     const pend = this.pendingRegister;
     this.pendingRegister = undefined;
     if (pend) {

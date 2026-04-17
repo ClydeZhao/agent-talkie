@@ -43,8 +43,12 @@ void (async () => {
     return;
   }
 
+  window.addEventListener("beforeunload", () => {
+    bridge.close();
+  });
+
   try {
-    await bridge.connect();
+    await bridge.connect({ autoReconnect: true });
     const resumed = await bridge.resumeFromStorage();
     if (!resumed) {
       await bridge.registerNewSession({
