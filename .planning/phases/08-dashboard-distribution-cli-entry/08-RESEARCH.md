@@ -219,17 +219,13 @@ program
 | A1 | 通过 `join(dirname(require.resolve('@agent-talkie/dashboard/package.json')), 'dist-app')` 在发布包中可解析到正确目录 | Architecture | 若包导出或 `exports` 限制访问，则需增加显式 `exports` 子路径 |
 | A2 | 剥离 `/dashboard` 前缀后对 `req.url` 的改写与 sirv 组合在 Node 22 下无副作用 | Code Examples | 应用集成测试覆盖 `GET /dashboard`、`/dashboard/foo`、静态 asset |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **根路径 `GET /` 在 daemon 模式下是否应返回 404 或简短说明？**  
-   - 已知：当前 health 处理器对其它路径不响应。  
-   - 缺口：产品是否希望 `GET /` 重定向到 `/dashboard`。  
-   - 建议：Phase 8 保持 D-02「根路径预留给未来」；不自动重定向，除非用户后续要求。
+1. **根路径 `GET /` 在 daemon 模式下是否应返回 404 或简短说明？**
+   - RESOLVED: Phase 8 保持 D-02「根路径预留给未来」。`GET /` 返回 404（或 sirv 默认空目录响应）。不自动重定向到 `/dashboard`。CONTEXT D-01 明确指定 dashboard 在 `/dashboard` 前缀下。
 
-2. **`@agent-talkie/dashboard` 是否保持 `private: true` 若未来发布到 npm？**  
-   - 已知：workspace 内 `private: true`。  
-   - 缺口：公共发布策略。  
-   - 建议：与维护者确认；若永远作为 monorepo 一体发布，保持 private 即可，依赖方仍为 workspace 包名。
+2. **`@agent-talkie/dashboard` 是否保持 `private: true` 若未来发布到 npm？**
+   - RESOLVED: 保持 `private: true`。Dashboard 作为 monorepo 内部包，relay 通过 workspace 依赖引用。公共发布策略不在 Phase 8 范围内。
 
 ## Environment Availability
 
