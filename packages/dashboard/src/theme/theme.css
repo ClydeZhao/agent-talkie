@@ -1,0 +1,53 @@
+:root {
+  --talkie-bg: #0d1117;
+  --talkie-fg: #e6edf3;
+  --talkie-muted: #8b949e;
+  --talkie-border: #30363d;
+  --talkie-accent-danger: #f85149;
+  --talkie-surface: #161b22;
+  --talkie-badge-bg: #21262d;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--talkie-bg);
+  color: var(--talkie-fg);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+}
+
+.talkie-app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--talkie-bg);
+  color: var(--talkie-fg);
+}
+
+.talkie-app__header {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--talkie-border);
+  background: var(--talkie-surface);
+}
+
+.talkie-app__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+#talkie-main-panel {
+  flex: 1;
+  min-height: 240px;
+  padding: 12px 16px;
+  border-left: 1px solid var(--talkie-border);
+  background: var(--talkie-bg);
+}
