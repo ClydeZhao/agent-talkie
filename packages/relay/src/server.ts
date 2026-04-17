@@ -15,6 +15,7 @@ import {
 import {
   createSession,
   findActiveMembershipForSession,
+  getOversightSpaceSummaryBySlug,
   migrate,
   openDatabase,
 } from "@agent-talkie/persistence";
@@ -288,6 +289,27 @@ export async function createRelayServer(opts: {
       }
       res.writeHead(405, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false }));
+      return;
+    }
+
+    if (
+      req.method === "GET" &&
+      url.pathname === "/__agent-talkie/v1/oversight/space-summary"
+    ) {
+      const slug = url.searchParams.get("slug");
+      if (!slug) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "missing_slug" }));
+        return;
+      }
+      const summary = getOversightSpaceSummaryBySlug(db, slug);
+      if (summary === undefined) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "space_not_found" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(summary));
       return;
     }
 

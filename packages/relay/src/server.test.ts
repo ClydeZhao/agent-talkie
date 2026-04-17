@@ -354,5 +354,87 @@ describe("createRelayServer", () => {
       }
       await srv.close();
     });
+
+    it("GET space-summary returns 400 missing_slug without slug query", async () => {
+      const srv = await createRelayServer({ dbPath: testDbPath(), port: 0 });
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/oversight/space-summary`,
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { ok?: boolean; error?: string };
+      expect(body.ok).toBe(false);
+      expect(body.error).toBe("missing_slug");
+      await srv.close();
+    });
+
+    it("GET space-summary returns 404 space_not_found for unknown slug", async () => {
+      const srv = await createRelayServer({ dbPath: testDbPath(), port: 0 });
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/oversight/space-summary?slug=${encodeURIComponent("no-such-space")}`,
+      );
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { ok?: boolean; error?: string };
+      expect(body.ok).toBe(false);
+      expect(body.error).toBe("space_not_found");
+      await srv.close();
+    });
+
+    it("GET space-summary returns 200 JSON with members after join", async () => {
+      const dbPath = testDbPath();
+      const srv = await createRelayServer({ dbPath, port: 0 });
+      const ws = await openWs(srv.url);
+      await handshake(ws);
+      const slug = `http-summary-${randomUUID().slice(0, 8)}`;
+      ws.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "HTTPMember",
+            runtime: "vitest",
+            workspaceLabel: "relay-test",
+          },
+        }),
+      );
+      const reg = (await nextJson(ws)) as { type?: string; sessionId?: string };
+      expect(reg.type).toBe("session.registered");
+      ws.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: reg.sessionId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const joined = (await nextJson(ws)) as { type?: string };
+      expect(joined.type).toBe("space.joined");
+      ws.close();
+      await new Promise((r) => setTimeout(r, 50));
+
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/oversight/space-summary?slug=${encodeURIComponent(slug)}`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      const summary = (await res.json()) as {
+        slug?: string;
+        members?: Array<{
+          displayName?: string;
+          runtime?: string;
+          workspaceLabel?: string;
+        }>;
+      };
+      expect(summary.slug).toBe(slug);
+      expect(summary.members?.length).toBe(1);
+      expect(summary.members?.[0]?.displayName).toBe("HTTPMember");
+      expect(summary.members?.[0]?.runtime).toBe("vitest");
+      expect(summary.members?.[0]?.workspaceLabel).toBe("relay-test");
+      await srv.close();
+    });
   });
 });
