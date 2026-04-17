@@ -30,6 +30,11 @@ function parseIdleMs(): number {
   if (Number.isNaN(n) || n < 0) {
     return DEFAULT_IDLE_MS;
   }
+  // Zero grace is only meaningful for in-process tests via createRelayServer opts;
+  // the forked daemon would shut down before clients can connect after CLI exit.
+  if (n === 0) {
+    return DEFAULT_IDLE_MS;
+  }
   return n;
 }
 

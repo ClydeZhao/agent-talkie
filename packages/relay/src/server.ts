@@ -219,12 +219,53 @@ export async function createRelayServer(opts: {
   const connStates = new Map<WebSocket, ConnState>();
 
   const server = http.createServer();
+  const wss = new WebSocketServer({ server });
 
   const token = opts.relayGenerationToken;
+
+  let idleTimer: NodeJS.Timeout | undefined;
+  function clearIdle(): void {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = undefined;
+    }
+  }
+
+  let scheduleIdle: () => void = () => {};
+  const idleShutdownEnabled =
+    opts.idleShutdownMs !== undefined &&
+    Number.isFinite(opts.idleShutdownMs) &&
+    opts.idleShutdownMs >= 0 &&
+    typeof opts.onIdleShutdown === "function";
+  if (idleShutdownEnabled) {
+    const idleMs = opts.idleShutdownMs as number;
+    const onIdleShutdown = opts.onIdleShutdown as () => void | Promise<void>;
+    scheduleIdle = () => {
+      clearIdle();
+      if (wss.clients.size === 0) {
+        idleTimer = setTimeout(() => {
+          void Promise.resolve(onIdleShutdown()).catch((err) => {
+            console.error("onIdleShutdown failed", err);
+          });
+        }, idleMs);
+      }
+    };
+  }
 
   server.on("request", (req, res) => {
     if ((req.headers.upgrade ?? "").toLowerCase() === "websocket") {
       return;
+    }
+
+    if (idleShutdownEnabled) {
+      clearIdle();
+      const onHttpActivityEnd = (): void => {
+        if (wss.clients.size === 0) {
+          scheduleIdle();
+        }
+      };
+      res.once("finish", onHttpActivityEnd);
+      res.once("close", onHttpActivityEnd);
     }
 
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -271,37 +312,6 @@ export async function createRelayServer(opts: {
     res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("Not Found");
   });
-
-  const wss = new WebSocketServer({ server });
-
-  let idleTimer: NodeJS.Timeout | undefined;
-  function clearIdle(): void {
-    if (idleTimer) {
-      clearTimeout(idleTimer);
-      idleTimer = undefined;
-    }
-  }
-
-  let scheduleIdle: () => void = () => {};
-  const idleShutdownEnabled =
-    opts.idleShutdownMs !== undefined &&
-    Number.isFinite(opts.idleShutdownMs) &&
-    opts.idleShutdownMs >= 0 &&
-    typeof opts.onIdleShutdown === "function";
-  if (idleShutdownEnabled) {
-    const idleMs = opts.idleShutdownMs as number;
-    const onIdleShutdown = opts.onIdleShutdown as () => void | Promise<void>;
-    scheduleIdle = () => {
-      clearIdle();
-      if (wss.clients.size === 0) {
-        idleTimer = setTimeout(() => {
-          void Promise.resolve(onIdleShutdown()).catch((err) => {
-            console.error("onIdleShutdown failed", err);
-          });
-        }, idleMs);
-      }
-    };
-  }
 
   const spaceGcInterval = setInterval(() => {
     try {
