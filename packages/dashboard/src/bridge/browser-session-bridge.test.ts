@@ -204,6 +204,59 @@ describe("BrowserSessionBridge", () => {
     bridge.close();
   });
 
+  it("delivers post-handshake protocol.error to onProtocolError before envelope parse", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+
+    const joinP = bridge.joinSpace({
+      slug: "default",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({
+      type: "space.joined",
+      spaceId: randomUUID(),
+      slug: "default",
+    });
+    await joinP;
+
+    const received: { type: string; error: string }[] = [];
+    bridge.onProtocolError((p) => {
+      received.push(p);
+    });
+
+    ws.simulateInbound({
+      type: "protocol.error",
+      error: "no_orchestrator",
+    });
+
+    expect(received).toEqual([{ type: "protocol.error", error: "no_orchestrator" }]);
+
+    bridge.close();
+  });
+
   it("resumeFromStorage sends session.resume and persists new reconnectSecret", async () => {
     const store = new Map<string, string>();
     vi.stubGlobal(

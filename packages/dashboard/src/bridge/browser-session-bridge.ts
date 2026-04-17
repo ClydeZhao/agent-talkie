@@ -15,9 +15,11 @@ import {
   SESSION_ID_KEY,
 } from "./session-storage-keys.js";
 import {
+  protocolErrorWireSchema,
   sessionRegisteredWireSchema,
   spaceJoinedWireSchema,
   transcriptCatchupMessageSchema,
+  type ProtocolErrorWire,
 } from "./wire-schemas.js";
 
 const DEFAULT_URL = "ws://127.0.0.1:18765";
@@ -76,6 +78,9 @@ export class BrowserSessionBridge {
   private readonly staleListeners = new Set<() => void>();
   private readonly envelopeHandlers = new Set<(env: Envelope) => void>();
   private readonly catchupListeners = new Set<(row: TranscriptCatchupRow) => void>();
+  private readonly protocolErrorListeners = new Set<
+    (p: ProtocolErrorWire) => void
+  >();
   private pendingJoin:
     | {
         resolve: (v: { spaceId: string; slug: string }) => void;
@@ -134,6 +139,13 @@ export class BrowserSessionBridge {
     this.envelopeHandlers.add(handler);
     return () => {
       this.envelopeHandlers.delete(handler);
+    };
+  }
+
+  onProtocolError(cb: (p: ProtocolErrorWire) => void): () => void {
+    this.protocolErrorListeners.add(cb);
+    return () => {
+      this.protocolErrorListeners.delete(cb);
     };
   }
 
@@ -546,6 +558,21 @@ export class BrowserSessionBridge {
           this.setHealth("disconnected");
           pj.reject(new Error(JSON.stringify(parsed)));
           return;
+        }
+      }
+      return;
+    }
+
+    const protocolErr = protocolErrorWireSchema.safeParse(parsed);
+    if (protocolErr.success) {
+      if (protocolErr.data.error === "envelope_version_mismatch") {
+        this.setStaleReason("protocol_version");
+      }
+      for (const cb of this.protocolErrorListeners) {
+        try {
+          cb(protocolErr.data);
+        } catch {
+          /* ignore */
         }
       }
       return;

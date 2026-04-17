@@ -23,3 +23,10 @@ export const spaceJoinedWireSchema = z.object({
   type: z.literal("space.joined"),
   spaceId: z.string(),
 });
+
+export const protocolErrorWireSchema = z.object({
+  type: z.literal("protocol.error"),
+  error: z.string(),
+});
+
+export type ProtocolErrorWire = z.infer<typeof protocolErrorWireSchema>;
