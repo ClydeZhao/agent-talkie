@@ -7,6 +7,8 @@ import {
   safeParseEnvelope,
   type Envelope,
   type SessionRegisterMessage,
+  sessionResumedMessageSchema,
+  type SessionResumeMessage,
 } from "@agent-talkie/protocol";
 
 const DEFAULT_URL = "ws://127.0.0.1:18765";
@@ -43,6 +45,15 @@ export class TalkieSessionClient {
           sessionId: string;
           reconnectSecret: string;
           displayName: string;
+        }) => void;
+        reject: (e: Error) => void;
+      }
+    | undefined;
+  private pendingResume:
+    | {
+        resolve: (v: {
+          sessionId: string;
+          reconnectSecret: string;
         }) => void;
         reject: (e: Error) => void;
       }
@@ -181,6 +192,32 @@ export class TalkieSessionClient {
       return;
     }
 
+    if (this.pendingResume) {
+      const resumed = sessionResumedMessageSchema.safeParse(parsed);
+      if (resumed.success) {
+        const p = this.pendingResume;
+        this.pendingResume = undefined;
+        this.registeredSessionId = resumed.data.sessionId;
+        p.resolve({
+          sessionId: resumed.data.sessionId,
+          reconnectSecret: resumed.data.reconnectSecret,
+        });
+        return;
+      }
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        "type" in parsed &&
+        (parsed as { type: string }).type === "protocol.error"
+      ) {
+        const p = this.pendingResume;
+        this.pendingResume = undefined;
+        p.reject(new Error("protocol.error during session.resume"));
+        return;
+      }
+      return;
+    }
+
     if (this.pendingJoin) {
       const pj = this.pendingJoin;
       if (typeof parsed === "object" && parsed !== null && "type" in parsed) {
@@ -239,6 +276,32 @@ export class TalkieSessionClient {
     });
   }
 
+  async resume(
+    input: SessionResumeMessage,
+  ): Promise<{
+    sessionId: string;
+    reconnectSecret: string;
+  }> {
+    const ws = this.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error("WebSocket is not open");
+    }
+    if (this.pendingResume) {
+      throw new Error("session.resume already in progress");
+    }
+
+    return new Promise((resolve, reject) => {
+      this.pendingResume = { resolve, reject };
+      ws.send(
+        JSON.stringify({
+          type: "session.resume",
+          sessionId: input.sessionId,
+          reconnectSecret: input.reconnectSecret,
+        }),
+      );
+    });
+  }
+
   async joinSpace(args: {
     slug: string;
     idempotencyKey: string;
@@ -286,6 +349,11 @@ export class TalkieSessionClient {
     this.pendingRegister = undefined;
     if (pend) {
       pend.reject(new Error("client closed"));
+    }
+    const pr = this.pendingResume;
+    this.pendingResume = undefined;
+    if (pr) {
+      pr.reject(new Error("client closed"));
     }
     const pj = this.pendingJoin;
     this.pendingJoin = undefined;

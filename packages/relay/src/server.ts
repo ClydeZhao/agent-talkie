@@ -407,6 +407,7 @@ export async function createRelayServer(opts: {
         sendJson(ws, {
           type: "session.resumed",
           sessionId: res.data.sessionId,
+          reconnectSecret: newSecret,
         });
         const mem = findActiveMembershipForSession(db, res.data.sessionId);
         if (mem) {

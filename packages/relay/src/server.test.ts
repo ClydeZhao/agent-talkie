@@ -211,4 +211,74 @@ describe("createRelayServer", () => {
     ws2.close();
     await srv.close();
   });
+
+  it("rotates reconnectSecret on session.resume and returns the new secret", async () => {
+    const dbPath = testDbPath();
+    const srv = await createRelayServer({ dbPath, port: 0 });
+
+    const ws1 = await openWs(srv.url);
+    await handshake(ws1);
+    ws1.send(
+      JSON.stringify({
+        type: "session.register",
+        newSession: {
+          displayName: "R",
+          runtime: "vitest",
+          workspaceLabel: "wl",
+        },
+      }),
+    );
+    const reg = (await nextJson(ws1)) as {
+      sessionId?: string;
+      reconnectSecret?: string;
+    };
+    const sessionId = reg.sessionId!;
+    const secret1 = reg.reconnectSecret!;
+    ws1.close();
+    await new Promise((r) => setTimeout(r, 80));
+
+    const ws2 = await openWs(srv.url);
+    await handshake(ws2);
+    ws2.send(
+      JSON.stringify({
+        type: "session.resume",
+        sessionId,
+        reconnectSecret: secret1,
+      }),
+    );
+    const resumed = (await nextJson(ws2)) as {
+      type?: string;
+      sessionId?: string;
+      reconnectSecret?: string;
+    };
+    expect(resumed.type).toBe("session.resumed");
+    expect(resumed.sessionId).toBe(sessionId);
+    expect((resumed.reconnectSecret ?? "").length).toBeGreaterThan(20);
+    expect(resumed.reconnectSecret).not.toBe(secret1);
+    const secret2 = resumed.reconnectSecret!;
+    ws2.close();
+    await new Promise((r) => setTimeout(r, 80));
+
+    const ws3 = await openWs(srv.url);
+    await handshake(ws3);
+    ws3.send(
+      JSON.stringify({
+        type: "session.resume",
+        sessionId,
+        reconnectSecret: secret2,
+      }),
+    );
+    const resumedAgain = (await nextJson(ws3)) as {
+      type?: string;
+      sessionId?: string;
+      reconnectSecret?: string;
+    };
+    expect(resumedAgain.type).toBe("session.resumed");
+    expect(resumedAgain.sessionId).toBe(sessionId);
+    expect((resumedAgain.reconnectSecret ?? "").length).toBeGreaterThan(20);
+    expect(resumedAgain.reconnectSecret).not.toBe(secret2);
+
+    ws3.close();
+    await srv.close();
+  });
 });

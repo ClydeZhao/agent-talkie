@@ -50,3 +50,11 @@ export const sessionResumeMessageSchema = z.object({
 });
 
 export type SessionResumeMessage = z.infer<typeof sessionResumeMessageSchema>;
+
+export const sessionResumedMessageSchema = z.object({
+  type: z.literal("session.resumed"),
+  sessionId: z.string().uuid(),
+  reconnectSecret: z.string().min(1),
+});
+
+export type SessionResumedMessage = z.infer<typeof sessionResumedMessageSchema>;

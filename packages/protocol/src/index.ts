@@ -24,6 +24,8 @@ export {
   type RelayHandshakeNack,
   sessionRegisterMessageSchema,
   type SessionRegisterMessage,
+  sessionResumedMessageSchema,
+  type SessionResumedMessage,
   sessionResumeMessageSchema,
   type SessionResumeMessage,
 } from "./relay-wire.js";
