@@ -1,4 +1,4 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 import type { RosterRow } from "../store/dashboard-store.js";
@@ -15,6 +15,10 @@ export class TalkieRosterEntry extends LitElement {
       gap: 10px;
       padding: 10px 12px;
       border-bottom: 1px solid var(--talkie-border, #30363d);
+      box-sizing: border-box;
+    }
+    .row.row--blocked {
+      border: 1px solid #dc2626;
     }
     .icon-wrap {
       position: relative;
@@ -45,6 +49,63 @@ export class TalkieRosterEntry extends LitElement {
       line-height: 1.3;
       word-break: break-word;
     }
+    .chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+      align-items: center;
+    }
+    .chip {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--talkie-badge-bg, #21262d);
+      color: var(--talkie-muted, #8b949e);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .progress-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .progress-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .progress-dot--idle {
+      background: #737373;
+    }
+    .progress-dot--working {
+      background: #16a34a;
+      animation: talkie-pulse-opacity 1.2s ease-in-out infinite;
+    }
+    .progress-dot--blocked {
+      background: #dc2626;
+    }
+    .progress-dot--done {
+      background: #2563eb;
+    }
+    @keyframes talkie-pulse-opacity {
+      0%,
+      100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.35;
+      }
+    }
+    .progress-label {
+      font-size: 11px;
+      color: var(--talkie-muted, #8b949e);
+      text-transform: none;
+    }
     .meta {
       display: flex;
       flex-wrap: wrap;
@@ -73,14 +134,33 @@ export class TalkieRosterEntry extends LitElement {
     if (!r) {
       return html``;
     }
+    const prog = this._progressState(r);
+    const blocked = prog === "blocked";
+    const titleAttr =
+      blocked && r.blockedReason.length > 0 ? r.blockedReason : nothing;
     return html`
-      <div class="row">
+      <div
+        class="row ${blocked ? "row--blocked" : ""}"
+        title=${titleAttr}
+      >
         <div class="icon-wrap">
           ${r.isHuman ? this._personIcon() : this._botIcon()}
           ${r.orchestrator ? this._starIcon() : null}
         </div>
         <div class="main">
           <div class="name">${r.displayName}</div>
+          <div class="chips-row">
+            ${r.role
+              ? html`<span class="chip">role:${r.role}</span>`
+              : nothing}
+            ${r.focus
+              ? html`<span class="chip">${this._truncFocus(r.focus)}</span>`
+              : nothing}
+            <span class="progress-wrap">
+              <span class="progress-dot progress-dot--${prog}"></span>
+              <span class="progress-label">${prog}</span>
+            </span>
+          </div>
           <div class="meta">
             <span class="badge" title=${r.runtime}>${r.runtime}</span>
             <span class="badge" title=${r.workspaceLabel}>${r.workspaceLabel}</span>
@@ -88,6 +168,29 @@ export class TalkieRosterEntry extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private _progressState(
+    r: RosterRow,
+  ): "idle" | "working" | "blocked" | "done" {
+    const p = r.progress;
+    if (
+      p === "idle" ||
+      p === "working" ||
+      p === "blocked" ||
+      p === "done"
+    ) {
+      return p;
+    }
+    return "idle";
+  }
+
+  private _truncFocus(s: string): string {
+    const max = 48;
+    if (s.length <= max) {
+      return s;
+    }
+    return `${s.slice(0, max)}…`;
   }
 
   private _personIcon() {

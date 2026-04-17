@@ -61,6 +61,7 @@ void (async () => {
   });
   bridge.onEnvelope((env) => {
     store.appendTranscriptEnvelope(env);
+    store.applyMetadataPatchFromEnvelope(env);
   });
 
   bridge.onConnectionHealthChange((s) => {

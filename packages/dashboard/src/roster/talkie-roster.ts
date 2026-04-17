@@ -35,11 +35,19 @@ export class TalkieRoster extends LitElement {
   entries: RosterRow[] = [];
 
   render() {
+    const sorted = [...this.entries].sort((a, b) => {
+      const aBlocked = a.progress === "blocked" ? 1 : 0;
+      const bBlocked = b.progress === "blocked" ? 1 : 0;
+      if (aBlocked !== bBlocked) {
+        return bBlocked - aBlocked;
+      }
+      return a.sessionId.localeCompare(b.sessionId);
+    });
     return html`
       <div class="head">Roster</div>
-      ${this.entries.length === 0
+      ${sorted.length === 0
         ? html`<div class="empty">No members yet</div>`
-        : this.entries.map(
+        : sorted.map(
             (row) =>
               html`<talkie-roster-entry .row=${row}></talkie-roster-entry>`,
           )}
