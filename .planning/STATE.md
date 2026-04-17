@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-04-17)
 ## Current Position
 
 Phase: 7 — Browser connection & session bridge
-Plan: 3（下一项：07-03 重连与 relaySeq）
-Status: executing
-Last activity: 2026-04-17 -- Completed 07-02 (connection shell + health + generation probe)
+Plan: 3
+Status: completed (Phase 7 plans 07-01–07-03)
+Last activity: 2026-04-17 -- Completed 07-03 (reconnect backoff, catch-up dedupe, resume fallback)
 
 ## Accumulated Context
 
