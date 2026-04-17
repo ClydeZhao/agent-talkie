@@ -1,5 +1,7 @@
 import { spawn as defaultSpawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Writable } from "node:stream";
 import {
   ContentLengthFrameReader,
@@ -11,13 +13,22 @@ import {
   safeParseEnvelope,
   type Envelope,
 } from "@agent-talkie/protocol";
-import { ensureRelayRunning as defaultEnsureRelay } from "@agent-talkie/supervisor";
+import {
+  ensureRelayRunning as defaultEnsureRelay,
+  resolveAgentTalkieDataDir,
+} from "@agent-talkie/supervisor";
 
 export type EnsureRelayRunning = (opts: Record<string, unknown>) => Promise<{
   port: number;
 }>;
 
 const BLOCKED_LINE_RE = /\b(permission|approval|confirm)\b/i;
+const CODEX_SESSION_STATE_FILE = "adapter-codex-session-state.json";
+
+type PersistedSessionState = {
+  sessionId: string;
+  reconnectSecret: string;
+};
 
 function looksLikeUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -52,6 +63,42 @@ function shouldForwardToChild(
     return false;
   }
   return false;
+}
+
+function codexSessionStatePath(): string {
+  return join(resolveAgentTalkieDataDir(), CODEX_SESSION_STATE_FILE);
+}
+
+function loadPersistedSessionState(
+  path: string,
+): PersistedSessionState | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as { sessionId?: unknown }).sessionId === "string" &&
+      typeof (parsed as { reconnectSecret?: unknown }).reconnectSecret ===
+        "string"
+    ) {
+      return {
+        sessionId: (parsed as { sessionId: string }).sessionId,
+        reconnectSecret: (parsed as { reconnectSecret: string }).reconnectSecret,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
+
+function persistSessionState(path: string, state: PersistedSessionState): void {
+  mkdirSync(resolveAgentTalkieDataDir(), { recursive: true });
+  writeFileSync(path, JSON.stringify(state), "utf8");
+}
+
+function clearPersistedSessionState(path: string): void {
+  rmSync(path, { force: true });
 }
 
 async function writeFramedEnvelope(stdin: Writable, envelope: Envelope): Promise<void> {
@@ -101,17 +148,48 @@ export async function runCodexAdapter(opts?: {
   }
 
   const relay = await ensureRelay({});
-  const client = new ClientClass({
-    url: `ws://127.0.0.1:${relay.port}`,
-  });
-  await client.connect();
-  const reg = await client.registerSession({
+  const statePath = codexSessionStatePath();
+  const sessionInput = {
     displayName: process.env.TALKIE_CODEX_DISPLAY_NAME ?? "codex-adapter",
     runtime: process.env.TALKIE_CODEX_RUNTIME ?? "adapter-codex",
     workspaceLabel: process.env.TALKIE_CODEX_WORKSPACE ?? ".",
     isHuman: false,
-  });
-  const registeredSessionId = reg.sessionId;
+  } as const;
+  const connectClient = async (): Promise<TalkieSessionClient> => {
+    const next = new ClientClass({
+      url: `ws://127.0.0.1:${relay.port}`,
+    });
+    await next.connect();
+    return next;
+  };
+
+  let client = await connectClient();
+  let registeredSessionId: string;
+  const persisted = loadPersistedSessionState(statePath);
+  if (persisted) {
+    try {
+      const resumed = await client.resume(persisted);
+      persistSessionState(statePath, resumed);
+      registeredSessionId = resumed.sessionId;
+    } catch {
+      clearPersistedSessionState(statePath);
+      client.close();
+      client = await connectClient();
+      const reg = await client.registerSession(sessionInput);
+      persistSessionState(statePath, {
+        sessionId: reg.sessionId,
+        reconnectSecret: reg.reconnectSecret,
+      });
+      registeredSessionId = reg.sessionId;
+    }
+  } else {
+    const reg = await client.registerSession(sessionInput);
+    persistSessionState(statePath, {
+      sessionId: reg.sessionId,
+      reconnectSecret: reg.reconnectSecret,
+    });
+    registeredSessionId = reg.sessionId;
+  }
 
   let activeSpaceId: string | null = null;
   const joinSlug = process.env.TALKIE_CODEX_JOIN_SLUG?.trim();

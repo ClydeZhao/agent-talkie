@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TalkieSessionClient } from "@agent-talkie/client";
@@ -25,6 +24,12 @@ import {
 import { z } from "zod";
 
 export const DEFAULT_TIMELINE_LIMIT = 50;
+const CURSOR_MCP_SESSION_STATE_FILE = "adapter-cursor-mcp-session-state.json";
+
+type PersistedSessionState = {
+  sessionId: string;
+  reconnectSecret: string;
+};
 
 export type CreateMcpServerDeps = {
   dbPath?: string;
@@ -41,6 +46,42 @@ function validationError(message: string): CallToolResult {
 
 function resolveDbPath(deps?: CreateMcpServerDeps): string {
   return deps?.dbPath ?? join(resolveAgentTalkieDataDir(), "relay.sqlite");
+}
+
+function resolveSessionStatePath(): string {
+  return join(resolveAgentTalkieDataDir(), CURSOR_MCP_SESSION_STATE_FILE);
+}
+
+function loadPersistedSessionState(
+  path: string,
+): PersistedSessionState | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as { sessionId?: unknown }).sessionId === "string" &&
+      typeof (parsed as { reconnectSecret?: unknown }).reconnectSecret ===
+        "string"
+    ) {
+      return {
+        sessionId: (parsed as { sessionId: string }).sessionId,
+        reconnectSecret: (parsed as { reconnectSecret: string }).reconnectSecret,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
+
+function persistSessionState(path: string, state: PersistedSessionState): void {
+  mkdirSync(resolveAgentTalkieDataDir(), { recursive: true });
+  writeFileSync(path, JSON.stringify(state), "utf8");
+}
+
+function clearPersistedSessionState(path: string): void {
+  rmSync(path, { force: true });
 }
 
 function templateVarSlug(value: string | string[] | undefined): string {
@@ -65,19 +106,45 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
   }> {
     if (!sessionPromise) {
       sessionPromise = (async () => {
-        let client = deps?.client;
-        if (!client) {
-          const relay = await ensureRelay({});
-          client = new TalkieSessionClient({
-            url: `ws://127.0.0.1:${relay.port}`,
-          });
-        }
-        await client.connect();
-        const reg = await client.registerSession({
+        const statePath = resolveSessionStatePath();
+        const sessionInput = {
           displayName: process.env.TALKIE_MCP_DISPLAY_NAME ?? "cursor-mcp-adapter",
           runtime: process.env.TALKIE_MCP_RUNTIME ?? "adapter-cursor-mcp",
           workspaceLabel: process.env.TALKIE_MCP_WORKSPACE ?? ".",
           isHuman: process.env.TALKIE_MCP_IS_HUMAN === "0" ? false : true,
+        } as const;
+        const connectClient = async (): Promise<TalkieSessionClient> => {
+          let client = deps?.client;
+          if (!client) {
+            const relay = await ensureRelay({});
+            client = new TalkieSessionClient({
+              url: `ws://127.0.0.1:${relay.port}`,
+            });
+          }
+          await client.connect();
+          return client;
+        };
+
+        let client = await connectClient();
+        const persisted = loadPersistedSessionState(statePath);
+        if (persisted) {
+          try {
+            const resumed = await client.resume(persisted);
+            persistSessionState(statePath, resumed);
+            return { client, sessionId: resumed.sessionId };
+          } catch {
+            clearPersistedSessionState(statePath);
+            if (!deps?.client) {
+              client.close();
+              client = await connectClient();
+            }
+          }
+        }
+
+        const reg = await client.registerSession(sessionInput);
+        persistSessionState(statePath, {
+          sessionId: reg.sessionId,
+          reconnectSecret: reg.reconnectSecret,
         });
         return { client, sessionId: reg.sessionId };
       })();

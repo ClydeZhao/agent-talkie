@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +62,10 @@ class MockTalkieSessionClient {
     reconnectSecret: "r",
     displayName: "d",
   }));
+  resume = vi.fn(async () => ({
+    sessionId: REG_SID,
+    reconnectSecret: "r2",
+  }));
   joinSpace = vi.fn(async () => ({
     spaceId: SPACE_SID,
     slug: "demo",
@@ -80,9 +87,12 @@ class MockTalkieSessionClient {
 
 describe("runCodexAdapter", () => {
   let mockChild: ChildProcess;
+  let dataDir: string;
 
   beforeEach(() => {
     process.env.TALKIE_CODEX_JOIN_SLUG = "demo";
+    dataDir = mkdtempSync(join(tmpdir(), "talkie-codex-adapter-"));
+    process.env.AGENT_TALKIE_DATA_DIR = dataDir;
     vi.clearAllMocks();
   });
 
@@ -90,6 +100,8 @@ describe("runCodexAdapter", () => {
     delete process.env.TALKIE_CODEX_JOIN_SLUG;
     delete process.env.TALKIE_CODEX_SPACE_ID;
     delete process.env.TALKIE_CODEX_ARGS_JSON;
+    delete process.env.AGENT_TALKIE_DATA_DIR;
+    rmSync(dataDir, { recursive: true, force: true });
   });
 
   it("calls sendEnvelope with child stdout envelope (instance spy)", async () => {
@@ -270,5 +282,58 @@ describe("runCodexAdapter", () => {
       (call) => (call[0] as Envelope).type === "metadata.patch",
     );
     expect(blockedCalls).toHaveLength(1);
+  });
+
+  it("resumes from persisted session credentials and rotates the stored secret", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+    const statePath = join(dataDir, "adapter-codex-session-state.json");
+    writeFileSync(
+      statePath,
+      JSON.stringify({
+        sessionId: REG_SID,
+        reconnectSecret: "stored-secret",
+      }),
+      "utf8",
+    );
+
+    const mockSpawn = vi.fn((): ChildProcess => {
+      mockChild = createMockChild();
+      return mockChild;
+    });
+
+    const run = runCodexAdapter({
+      spawn: mockSpawn as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    (mockChild.stdout as PassThrough).end();
+    (mockChild.stderr as PassThrough).end();
+    mockChild.emit("exit", 0, null);
+    await run;
+
+    expect(createdClient).not.toBeNull();
+    expect(createdClient!.resume).toHaveBeenCalledWith({
+      sessionId: REG_SID,
+      reconnectSecret: "stored-secret",
+    });
+    expect(createdClient!.registerSession).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(readFileSync(statePath, "utf8")) as {
+        sessionId: string;
+        reconnectSecret: string;
+      },
+    ).toEqual({
+      sessionId: REG_SID,
+      reconnectSecret: "r2",
+    });
   });
 });
