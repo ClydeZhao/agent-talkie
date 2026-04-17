@@ -22,7 +22,7 @@ Requirements for web dashboard milestone. Each maps to roadmap phases.
 - [x] **OVER-04**: User sees collaboration metadata at a glance (role, focus, progress, blocked)
 - [ ] **OVER-05**: User sees session topology graph showing who is talking to whom
 - [ ] **OVER-06**: User sees blocked/attention lane that surfaces stalled sessions
-- [ ] **OVER-07**: User sees legible relay errors (no_orchestrator, not_in_space, etc.)
+- [x] **OVER-07**: User sees legible relay errors (no_orchestrator, not_in_space, etc.)
 
 ### Interactive Controls
 
@@ -84,7 +84,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | OVER-04 | Phase 9 | Complete |
 | OVER-05 | Phase 12 | Pending |
 | OVER-06 | Phase 12 | Pending |
-| OVER-07 | Phase 9 | Pending |
+| OVER-07 | Phase 9 | Complete |
 | CTRL-01 | Phase 10 | Pending |
 | CTRL-02 | Phase 10 | Pending |
 | CTRL-03 | Phase 10 | Pending |

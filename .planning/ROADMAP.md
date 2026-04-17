@@ -25,7 +25,7 @@
 
 - [x] **Phase 7: Browser connection & session bridge** — WebSocket session, health, reconnect, relaySeq gap-fill
 - [x] **Phase 8: Dashboard distribution & CLI entry** — Same-origin static assets, `talkie dashboard`
-- [ ] **Phase 9: Core oversight UI** — Roster, transcript tail, metadata chips, relay errors
+- [x] **Phase 9: Core oversight UI** — Roster, transcript tail, metadata chips, relay errors (completed 2026-04-17)
 - [ ] **Phase 10: Interactive human controls** — Send, orchestrator designate/clear, idempotent retries
 - [ ] **Phase 11: Space & membership management** — Create/destroy spaces, invite/remove, space picker
 - [ ] **Phase 12: Discovery, topology & attention** — Search/filter transcript, topology graph, attention lane
@@ -73,14 +73,14 @@ Plans:
   2. User sees an ordered transcript timeline that updates in real time and shows recent history on first connect (catch-up path).
   3. User sees collaboration metadata at a glance (role, focus, progress, blocked) without drilling into raw JSON.
   4. User sees human-readable messages for structured relay errors such as `no_orchestrator` and `not_in_space`.
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 **UI hint**: yes
 
 Plans:
 - [x] 09-01-PLAN.md — HTTP 名册快照（`GET /__agent-talkie/v1/oversight/space-summary`）+ `OversightMember` 含 runtime/workspace + `talkie-roster` 与两栏布局（OVER-01）
 - [x] 09-02-PLAN.md — `@lit-labs/virtualizer` transcript + catch-up/live 统一管道 + 贴底与「新消息」提示（OVER-02）
 - [x] 09-03-PLAN.md — `metadata.patch` 合并、200ms debounce、progress 点与 blocked 置顶/红框（OVER-04）
-- [ ] 09-04-PLAN.md — `protocol.error` bridge 回调 + `RELAY_ERROR_COPY` + `talkie-error-bar`（OVER-07）
+- [x] 09-04-PLAN.md — `protocol.error` bridge 回调 + `RELAY_ERROR_COPY` + `talkie-error-bar`（OVER-07）
 
 ### Phase 10: Interactive human controls
 **Goal:** Human can steer traffic and orchestration from the dashboard with CLI-equivalent routing and safe retries.
@@ -142,7 +142,7 @@ Plans:
 | 6. Oversight CLI resilience & cleanup | v1.0 | 2/2 | Complete | 2026-04-15 |
 | 7. Browser connection & session bridge | v2.0 | 3/3 | Complete | - |
 | 8. Dashboard distribution & CLI entry | v2.0 | 3/3 | Complete | 2026-04-17 |
-| 9. Core oversight UI | v2.0 | 1/4 | In Progress|  |
+| 9. Core oversight UI | v2.0 | 4/4 | Complete   | 2026-04-17 |
 | 10. Interactive human controls | v2.0 | 0/3 | Not started | - |
 | 11. Space & membership management | v2.0 | 0/3 | Not started | - |
 | 12. Discovery, topology & attention | v2.0 | 0/3 | Not started | - |
