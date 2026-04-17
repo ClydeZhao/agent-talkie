@@ -40,13 +40,13 @@
   1. User sees a clear connection health state (for example connected, reconnecting, or failed) while the dashboard is open.
   2. After a transient disconnect, the dashboard reconnects and applies gap-fill so newly loaded timeline content matches relay order without duplicate rows for the same logical events.
   3. User gets an explicit signal when session binding or relay generation is stale so they know to refresh or re-authenticate rather than watching a silently broken UI.
-**Plans**: TBD (target 3 plans: browser session bridge; WS + health; reconnect + relaySeq catch-up)
+**Plans:** 3 plans
 **UI hint**: yes
 
 Plans:
-- [ ] 07-01: `@agent-talkie/dashboard` / browser bridge — handshake, register or resume, join, dispatch loop (protocol parity, tests)
-- [ ] 07-02: Connection shell — native WebSocket client, health indicator, generation/version mismatch handling
-- [ ] 07-03: Auto-reconnect — backoff, cursor (`relaySeq`) for transcript/query catch-up, split-brain avoidance
+- [ ] 07-01-PLAN.md — `@agent-talkie/dashboard` 包与 `BrowserSessionBridge`：握手、register/resume、join、分发与 catch-up 序号跟踪（Vitest）
+- [ ] 07-02-PLAN.md — Lit `talkie-connection-shell`、健康四态、generation/health 探测与协议不匹配横幅；demo 联调
+- [ ] 07-03-PLAN.md — 自动重连退避、`relaySeq` catch-up 去重、resume 失败清凭证、generation stale 停止重连
 
 ### Phase 8: Dashboard distribution & CLI entry
 **Goal:** Operators install once and open the dashboard from the CLI with production same-origin static hosting.
