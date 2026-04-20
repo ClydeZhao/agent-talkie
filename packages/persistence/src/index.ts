@@ -17,8 +17,10 @@ export {
 } from "./repositories/sessions.js";
 export {
   pruneExpiredIdempotencyKeys,
+  runConversationIdempotentTranscriptAppend,
   tryRecordIdempotencyKey,
 } from "./repositories/idempotency.js";
+export type { ConversationIdempotencyOutcome } from "./repositories/idempotency.js";
 export {
   clearMembershipLeftAt,
   countActiveMembers,
