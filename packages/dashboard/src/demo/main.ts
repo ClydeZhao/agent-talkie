@@ -16,6 +16,7 @@ import {
   type OversightSpaceSummary,
 } from "../store/dashboard-store.js";
 import "../shell/connection-shell.js";
+import "../shell/talkie-send-bar.js";
 
 void (async () => {
   const wsUrl = import.meta.env.DEV
@@ -43,6 +44,16 @@ void (async () => {
   const transcript = document.createElement("talkie-transcript");
   transcript.store = store;
   mainPanel.appendChild(transcript);
+
+  const sendBar = document.createElement("talkie-send-bar");
+  sendBar.store = store;
+  sendBar.bridge = bridge;
+  mainPanel.appendChild(sendBar);
+
+  roster.addEventListener("talkie-toggle-send-target", (ev) => {
+    const sid = (ev as CustomEvent<{ sessionId: string }>).detail.sessionId;
+    store.toggleSendTargetSession(sid);
+  });
 
   bodyRow.appendChild(roster);
   bodyRow.appendChild(mainPanel);

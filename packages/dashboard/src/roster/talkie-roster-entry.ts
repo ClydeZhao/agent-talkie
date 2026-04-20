@@ -16,6 +16,7 @@ export class TalkieRosterEntry extends LitElement {
       padding: 10px 12px;
       border-bottom: 1px solid var(--talkie-border, #30363d);
       box-sizing: border-box;
+      cursor: pointer;
     }
     .row.row--blocked {
       border: 1px solid #dc2626;
@@ -129,6 +130,20 @@ export class TalkieRosterEntry extends LitElement {
   @property({ type: Object })
   row: RosterRow | undefined;
 
+  private _onRowClick(): void {
+    const r = this.row;
+    if (!r) {
+      return;
+    }
+    this.dispatchEvent(
+      new CustomEvent("talkie-toggle-send-target", {
+        detail: { sessionId: r.sessionId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   render() {
     const r = this.row;
     if (!r) {
@@ -142,6 +157,15 @@ export class TalkieRosterEntry extends LitElement {
       <div
         class="row ${blocked ? "row--blocked" : ""}"
         title=${titleAttr}
+        role="button"
+        tabindex="0"
+        @click=${this._onRowClick}
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            this._onRowClick();
+          }
+        }}
       >
         <div class="icon-wrap">
           ${r.isHuman ? this._personIcon() : this._botIcon()}

@@ -69,6 +69,8 @@ export type DashboardProtocolErrorItem = {
 export class DashboardStore {
   readonly roster = new Map<string, RosterRow>();
   activeSpaceId: string | null = null;
+  /** `null` → default human→orchestrator (omit `to`); otherwise direct `to` session. */
+  sendTargetSessionId: string | null = null;
   transcriptLines: TranscriptLine[] = [];
   errors: DashboardProtocolErrorItem[] = [];
   private readonly listeners = new Set<() => void>();
@@ -104,7 +106,46 @@ export class DashboardStore {
     this.transcriptDedupe.clear();
     this.transcriptLines = [];
     this.activeSpaceId = id;
+    this.sendTargetSessionId = null;
     this.notify();
+  }
+
+  setSendTargetOrchestratorDefault(): void {
+    if (this.sendTargetSessionId === null) {
+      return;
+    }
+    this.sendTargetSessionId = null;
+    this.notify();
+  }
+
+  setSendTargetSession(sessionId: string): void {
+    if (this.sendTargetSessionId === sessionId) {
+      return;
+    }
+    this.sendTargetSessionId = sessionId;
+    this.notify();
+  }
+
+  toggleSendTargetSession(sessionId: string): void {
+    if (this.sendTargetSessionId === sessionId) {
+      this.sendTargetSessionId = null;
+    } else {
+      this.sendTargetSessionId = sessionId;
+    }
+    this.notify();
+  }
+
+  /** Default orchestrator path blocked when no roster row is marked orchestrator (D-05). */
+  get isDefaultOrchestratorSendBlocked(): boolean {
+    if (this.sendTargetSessionId !== null) {
+      return false;
+    }
+    for (const row of this.roster.values()) {
+      if (row.orchestrator) {
+        return false;
+      }
+    }
+    return true;
   }
 
   pushProtocolError(wire: ProtocolErrorWire): void {
