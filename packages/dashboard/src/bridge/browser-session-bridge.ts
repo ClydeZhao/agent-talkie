@@ -129,6 +129,25 @@ export class BrowserSessionBridge {
     return this.negotiatedVersion;
   }
 
+  getRegisteredSessionId(): string | null {
+    return this.registeredSessionId;
+  }
+
+  sendEnvelope(envelope: Envelope): void {
+    if (this.negotiatedVersion === null || this.registeredSessionId === null) {
+      throw new Error("sendEnvelope: not_ready");
+    }
+    const ws = this.socket;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error("sendEnvelope: socket_not_open");
+    }
+    const parsed = safeParseEnvelope(envelope);
+    if (!parsed.success) {
+      throw new Error("sendEnvelope: invalid envelope");
+    }
+    ws.send(JSON.stringify(envelope));
+  }
+
   getMaxRelaySeq(): number {
     return this.maxRelaySeq;
   }

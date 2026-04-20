@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { v7 as uuidv7 } from "uuid";
+import type { Envelope } from "@agent-talkie/protocol";
 import { BrowserSessionBridge } from "./browser-session-bridge.js";
 import {
   RECONNECT_SECRET_KEY,
@@ -371,6 +372,195 @@ describe("BrowserSessionBridge", () => {
     const out = await resumeP;
     expect(out?.reconnectSecret).toBe("rotated-secret");
     expect(store.get(RECONNECT_SECRET_KEY)).toBe("rotated-secret");
+
+    bridge.close();
+  });
+
+  it("sendEnvelope throws not_ready before session registration", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const env: Envelope = {
+      version: 1,
+      id: randomUUID(),
+      sessionId: uuidv7(),
+      kind: "conversation",
+      type: "chat.message",
+      payload: { text: "x" },
+      spaceId: randomUUID(),
+    };
+    expect(() => bridge.sendEnvelope(env)).toThrow(/not_ready/);
+    bridge.close();
+  });
+
+  it("sendEnvelope throws socket_not_open when WebSocket is not open", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+
+    const spaceId = randomUUID();
+    const joinP = bridge.joinSpace({
+      slug: "default",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({
+      type: "space.joined",
+      spaceId,
+      slug: "default",
+    });
+    await joinP;
+
+    ws.close();
+    const env: Envelope = {
+      version: 1,
+      id: randomUUID(),
+      sessionId,
+      kind: "conversation",
+      type: "chat.message",
+      payload: { text: "x" },
+      spaceId,
+    };
+    expect(() => bridge.sendEnvelope(env)).toThrow(/socket_not_open/);
+    bridge.close();
+  });
+
+  it("sendEnvelope validates with safeParseEnvelope and does not send when invalid", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+
+    const spaceId = randomUUID();
+    const joinP = bridge.joinSpace({
+      slug: "default",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({
+      type: "space.joined",
+      spaceId,
+      slug: "default",
+    });
+    await joinP;
+
+    const n = ws.sent.length;
+    const invalid = {
+      version: 1,
+      id: "not-uuid",
+      sessionId,
+      kind: "conversation",
+      type: "chat.message",
+      payload: { text: "x" },
+      spaceId,
+    } as unknown as Envelope;
+    expect(() => bridge.sendEnvelope(invalid)).toThrow();
+    expect(ws.sent.length).toBe(n);
+
+    bridge.close();
+  });
+
+  it("sendEnvelope sends JSON for a valid envelope after join", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+
+    const spaceId = randomUUID();
+    const joinP = bridge.joinSpace({
+      slug: "default",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({
+      type: "space.joined",
+      spaceId,
+      slug: "default",
+    });
+    await joinP;
+
+    expect(bridge.getRegisteredSessionId()).toBe(sessionId);
+    expect(bridge.getNegotiatedEnvelopeVersion()).toBe(1);
+
+    const env: Envelope = {
+      version: 1,
+      id: randomUUID(),
+      sessionId,
+      kind: "conversation",
+      type: "chat.message",
+      payload: { text: "hello" },
+      spaceId,
+      idempotencyKey: randomUUID(),
+    };
+    bridge.sendEnvelope(env);
+    const last = JSON.parse(ws.sent[ws.sent.length - 1]!) as Envelope;
+    expect(last).toEqual(env);
 
     bridge.close();
   });
