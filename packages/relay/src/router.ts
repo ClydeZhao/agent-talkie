@@ -5,6 +5,7 @@ import {
   getOrchestratorSessionId,
   getSessionById,
   listTranscriptEntriesAfterSeq,
+  runConversationIdempotentTranscriptAppend,
 } from "@agent-talkie/persistence";
 import WebSocket from "ws";
 
@@ -125,7 +126,44 @@ export function routeEnvelope(ctx: {
     return;
   }
 
-  if (!SKIP_TRANSCRIPT_TYPES.has(envelope.type)) {
+  const wire = JSON.stringify(envelope);
+  let skipGlobalAppend = false;
+
+  if (envelope.kind === "conversation" && envelope.idempotencyKey) {
+    const idem = runConversationIdempotentTranscriptAppend(db, {
+      key: envelope.idempotencyKey,
+      sessionId: envelope.sessionId,
+      envelopeId: envelope.id,
+      wire,
+      nowMs,
+      append: () => {
+        if (!SKIP_TRANSCRIPT_TYPES.has(envelope.type)) {
+          appendTranscriptEntry(db, {
+            spaceId,
+            senderSessionId: envelope.sessionId,
+            envelopeJson: JSON.stringify(envelope),
+            kind: envelope.kind,
+            nowMs,
+          });
+          pruneTranscriptIfOverCap(db, spaceId);
+        }
+      },
+    });
+    if (idem.outcome === "mismatch") {
+      sendJson(senderWs, {
+        type: "protocol.error",
+        error: "idempotency_replay_mismatch",
+      });
+      return;
+    }
+    if (idem.outcome === "replay") {
+      senderWs.send(idem.wire);
+      return;
+    }
+    skipGlobalAppend = true;
+  }
+
+  if (!skipGlobalAppend && !SKIP_TRANSCRIPT_TYPES.has(envelope.type)) {
     appendTranscriptEntry(db, {
       spaceId,
       senderSessionId: envelope.sessionId,
@@ -135,8 +173,6 @@ export function routeEnvelope(ctx: {
     });
     pruneTranscriptIfOverCap(db, spaceId);
   }
-
-  const wire = JSON.stringify(envelope);
 
   const senderSession = getSessionById(db, envelope.sessionId);
   if (!senderSession) {
