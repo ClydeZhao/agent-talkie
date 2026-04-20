@@ -16,11 +16,15 @@ import {
 } from "./session-storage-keys.js";
 import {
   collaborationMetadataWireSchema,
+  collaborationOrchestratorWireSchema,
+  orchestratorClearedWireSchema,
+  orchestratorDesignatedWireSchema,
   protocolErrorWireSchema,
   sessionRegisteredWireSchema,
   spaceJoinedWireSchema,
   transcriptCatchupMessageSchema,
   type CollaborationMetadataWire,
+  type OrchestratorRosterWire,
   type ProtocolErrorWire,
 } from "./wire-schemas.js";
 
@@ -85,6 +89,9 @@ export class BrowserSessionBridge {
   >();
   private readonly collaborationMetadataListeners = new Set<
     (m: CollaborationMetadataWire) => void
+  >();
+  private readonly orchestratorRosterListeners = new Set<
+    (m: OrchestratorRosterWire) => void
   >();
   private pendingJoin:
     | {
@@ -180,6 +187,23 @@ export class BrowserSessionBridge {
     return () => {
       this.collaborationMetadataListeners.delete(cb);
     };
+  }
+
+  onOrchestratorRosterWire(cb: (m: OrchestratorRosterWire) => void): () => void {
+    this.orchestratorRosterListeners.add(cb);
+    return () => {
+      this.orchestratorRosterListeners.delete(cb);
+    };
+  }
+
+  private emitOrchestratorRosterWire(msg: OrchestratorRosterWire): void {
+    for (const cb of this.orchestratorRosterListeners) {
+      try {
+        cb(msg);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   getConnectionHealth(): ConnectionHealthUiState {
@@ -642,6 +666,22 @@ export class BrowserSessionBridge {
           /* ignore */
         }
       }
+      return;
+    }
+
+    const orchDesignated = orchestratorDesignatedWireSchema.safeParse(parsed);
+    if (orchDesignated.success) {
+      this.emitOrchestratorRosterWire(orchDesignated.data);
+      return;
+    }
+    const orchCleared = orchestratorClearedWireSchema.safeParse(parsed);
+    if (orchCleared.success) {
+      this.emitOrchestratorRosterWire(orchCleared.data);
+      return;
+    }
+    const orchCollab = collaborationOrchestratorWireSchema.safeParse(parsed);
+    if (orchCollab.success) {
+      this.emitOrchestratorRosterWire(orchCollab.data);
       return;
     }
 

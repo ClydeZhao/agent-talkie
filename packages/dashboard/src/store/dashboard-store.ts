@@ -347,6 +347,31 @@ export class DashboardStore {
     this.notify();
   }
 
+  /**
+   * Updates `RosterRow.orchestrator` from relay WS fan-out / acks (CTRL-02).
+   * Ignores other spaces; only mutates rows already present in `roster`.
+   */
+  syncOrchestratorFromRelay(
+    spaceId: string,
+    orchestratorSessionId: string | null,
+  ): void {
+    if (spaceId !== this.activeSpaceId) {
+      return;
+    }
+    let changed = false;
+    for (const [id, row] of this.roster) {
+      const next =
+        orchestratorSessionId !== null && id === orchestratorSessionId;
+      if (row.orchestrator !== next) {
+        this.roster.set(id, { ...row, orchestrator: next });
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.notify();
+    }
+  }
+
   scheduleSnapshotRefresh(
     fetchSummary: () => Promise<void>,
     intervalMs: number,

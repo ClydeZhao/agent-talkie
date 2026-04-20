@@ -44,3 +44,36 @@ export const collaborationMetadataWireSchema = z.object({
 export type CollaborationMetadataWire = z.infer<
   typeof collaborationMetadataWireSchema
 >;
+
+/** Relay → client after successful `orchestrator.designate` (not an {@link Envelope}). */
+export const orchestratorDesignatedWireSchema = z.object({
+  type: z.literal("orchestrator.designated"),
+  spaceId: z.string().uuid(),
+  orchestratorSessionId: z.string().uuid(),
+});
+
+export const orchestratorClearedWireSchema = z.object({
+  type: z.literal("orchestrator.cleared"),
+  spaceId: z.string().uuid(),
+});
+
+export const collaborationOrchestratorWireSchema = z.object({
+  type: z.literal("collaboration.orchestrator"),
+  spaceId: z.string().uuid(),
+  orchestratorSessionId: z.string().uuid().nullable(),
+});
+
+export type OrchestratorDesignatedWire = z.infer<
+  typeof orchestratorDesignatedWireSchema
+>;
+export type OrchestratorClearedWire = z.infer<
+  typeof orchestratorClearedWireSchema
+>;
+export type CollaborationOrchestratorWire = z.infer<
+  typeof collaborationOrchestratorWireSchema
+>;
+
+export type OrchestratorRosterWire =
+  | OrchestratorDesignatedWire
+  | OrchestratorClearedWire
+  | CollaborationOrchestratorWire;
