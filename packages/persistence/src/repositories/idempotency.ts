@@ -36,7 +36,7 @@ export function runConversationIdempotentTranscriptAppend(
 
     if (insertResult.changes > 0) {
       args.append();
-      return { outcome: "fresh" };
+      return { outcome: "fresh" } as const;
     }
 
     const row = db
@@ -53,20 +53,23 @@ export function runConversationIdempotentTranscriptAppend(
       | undefined;
 
     if (!row) {
-      return { outcome: "mismatch" };
+      return { outcome: "mismatch" } as const;
     }
     if (row.session_id !== args.sessionId) {
-      return { outcome: "mismatch" };
+      return { outcome: "mismatch" } as const;
     }
     if (
       row.conversation_envelope_id !== args.envelopeId ||
       row.conversation_replay_wire === null ||
       row.conversation_replay_wire.length === 0
     ) {
-      return { outcome: "mismatch" };
+      return { outcome: "mismatch" } as const;
     }
 
-    return { outcome: "replay", wire: row.conversation_replay_wire };
+    return {
+      outcome: "replay",
+      wire: row.conversation_replay_wire,
+    } as const;
   })();
 }
 
