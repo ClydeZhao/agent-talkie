@@ -12,7 +12,7 @@ import {
   upsertCollaborationProfile,
   upsertCollaborationStatus,
 } from "@agent-talkie/persistence";
-import type { WebSocket } from "ws";
+import WebSocket from "ws";
 import {
   metadataPatchPayloadSchema,
   metadataQueryPayloadSchema,
@@ -32,7 +32,7 @@ const CONTROL_TYPES = new Set([
 ]);
 
 function sendJson(ws: WebSocket, payload: unknown): void {
-  if (ws.readyState === ws.OPEN) {
+  if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
   }
 }
@@ -75,7 +75,7 @@ function fanOutOrchestratorUpdate(
       continue;
     }
     const sock = ctx.registry.get(sid);
-    if (sock?.readyState === sock.OPEN) {
+    if (sock?.readyState === WebSocket.OPEN) {
       sendJson(sock, {
         type: "collaboration.orchestrator",
         spaceId,
@@ -308,17 +308,17 @@ export function handleCollaborationControl(
 
     if (payload.namespace === "profile") {
       const senderRow = getSessionById(db, envelope.sessionId);
-      if (!senderRow?.isHuman) {
-        sendJson(ws, {
-          type: "protocol.error",
-          error: "metadata_patch_forbidden",
-        });
-        return true;
-      }
-      if (
+      const targetsOther =
         payload.targetSessionId !== undefined &&
-        payload.targetSessionId !== envelope.sessionId
-      ) {
+        payload.targetSessionId !== envelope.sessionId;
+      if (targetsOther) {
+        if (!senderRow?.isHuman) {
+          sendJson(ws, {
+            type: "protocol.error",
+            error: "metadata_patch_forbidden",
+          });
+          return true;
+        }
         if (!hasActiveMembership(db, spaceId, payload.targetSessionId)) {
           sendJson(ws, { type: "protocol.error", error: "not_in_space" });
           return true;
@@ -361,7 +361,7 @@ export function handleCollaborationControl(
         continue;
       }
       const sock = ctx.registry.get(sid);
-      if (sock?.readyState === sock.OPEN) {
+      if (sock?.readyState === WebSocket.OPEN) {
         sendJson(sock, {
           type: "collaboration.metadata",
           spaceId,

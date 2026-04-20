@@ -10,7 +10,8 @@ import { z } from "zod";
  * - `metadata.query` → {@link metadataQueryPayloadSchema} (space from envelope.spaceId)
  *
  * Relay resolves profile `targetSessionId` as `payload.targetSessionId ?? envelope.sessionId`.
- * Only `isHuman` senders may set `targetSessionId` ≠ `envelope.sessionId`; target must be an active member (enforced in relay handlers).
+ * Non-human senders may only patch their own profile (`targetSessionId` absent or equal to `envelope.sessionId`).
+ * Human senders may set another member's profile only when `targetSessionId` ≠ `envelope.sessionId` and the target is an active member.
  */
 
 export const progressSchema = z.enum(["idle", "working", "blocked", "done"]);

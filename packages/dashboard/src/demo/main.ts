@@ -66,6 +66,9 @@ void (async () => {
     store.appendTranscriptEnvelope(env);
     store.applyMetadataPatchFromEnvelope(env);
   });
+  bridge.onCollaborationMetadata((msg) => {
+    store.applyCollaborationMetadataWire(msg);
+  });
 
   bridge.onConnectionHealthChange((s) => {
     shell.healthState = s;

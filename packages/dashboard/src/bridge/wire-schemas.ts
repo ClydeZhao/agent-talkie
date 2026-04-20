@@ -30,3 +30,17 @@ export const protocolErrorWireSchema = z.object({
 });
 
 export type ProtocolErrorWire = z.infer<typeof protocolErrorWireSchema>;
+
+/** Relay fan-out after `metadata.patch` (not a protocol {@link Envelope}). */
+export const collaborationMetadataWireSchema = z.object({
+  type: z.literal("collaboration.metadata"),
+  spaceId: z.string().uuid(),
+  sessionId: z.string().uuid(),
+  namespace: z.enum(["profile", "status"]),
+  patch: z.record(z.string(), z.unknown()),
+  updatedAt: z.number(),
+});
+
+export type CollaborationMetadataWire = z.infer<
+  typeof collaborationMetadataWireSchema
+>;

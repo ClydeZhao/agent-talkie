@@ -2,10 +2,14 @@ import {
   metadataPatchPayloadSchema,
   safeParseEnvelope,
   type Envelope,
+  type MetadataPatchPayload,
 } from "@agent-talkie/protocol";
 
 import type { TranscriptCatchupRow } from "../bridge/browser-session-bridge.js";
-import type { ProtocolErrorWire } from "../bridge/wire-schemas.js";
+import type {
+  CollaborationMetadataWire,
+  ProtocolErrorWire,
+} from "../bridge/wire-schemas.js";
 import { getRelayErrorCopy } from "../errors/relay-error-copy.js";
 
 /** Coalesces rapid `metadata.patch` UI updates (OVER-04 / D-17). */
@@ -180,6 +184,31 @@ export class DashboardStore {
         ? data.targetSessionId
         : envelope.sessionId;
     if (targetSessionId === undefined || targetSessionId === "") {
+      return;
+    }
+    this.mergeMetadataPatchIntoRoster(envelope.spaceId, targetSessionId, data);
+  }
+
+  /**
+   * Applies relay `collaboration.metadata` fan-out (live peer updates are not envelopes).
+   */
+  applyCollaborationMetadataWire(msg: CollaborationMetadataWire): void {
+    const parsed = metadataPatchPayloadSchema.safeParse({
+      namespace: msg.namespace,
+      patch: msg.patch,
+    });
+    if (!parsed.success) {
+      return;
+    }
+    this.mergeMetadataPatchIntoRoster(msg.spaceId, msg.sessionId, parsed.data);
+  }
+
+  private mergeMetadataPatchIntoRoster(
+    spaceId: string | undefined,
+    targetSessionId: string,
+    data: MetadataPatchPayload,
+  ): void {
+    if (spaceId !== undefined && spaceId !== this.activeSpaceId) {
       return;
     }
     let row = this.roster.get(targetSessionId);

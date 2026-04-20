@@ -6,7 +6,7 @@ import {
   getSessionById,
   listTranscriptEntriesAfterSeq,
 } from "@agent-talkie/persistence";
-import type { WebSocket } from "ws";
+import WebSocket from "ws";
 
 export const TRANSCRIPT_MAX_ROWS_PER_SPACE = 50000;
 
@@ -18,7 +18,7 @@ const SKIP_TRANSCRIPT_TYPES = new Set([
 ]);
 
 function sendJson(ws: WebSocket, payload: unknown): void {
-  if (ws.readyState === ws.OPEN) {
+  if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
   }
 }
@@ -155,7 +155,7 @@ export function routeEnvelope(ctx: {
       return;
     }
     const orchWs = getSocketForSession(orch);
-    if (!orchWs || orchWs.readyState !== orchWs.OPEN) {
+    if (!orchWs || orchWs.readyState !== WebSocket.OPEN) {
       sendJson(senderWs, {
         type: "protocol.error",
         error: "orchestrator_offline",
@@ -176,7 +176,7 @@ export function routeEnvelope(ctx: {
       return;
     }
     const targetWs = getSocketForSession(envelope.to);
-    if (targetWs?.readyState === targetWs.OPEN) {
+    if (targetWs?.readyState === WebSocket.OPEN) {
       targetWs.send(wire);
     }
     return;
@@ -194,7 +194,7 @@ export function routeEnvelope(ctx: {
       continue;
     }
     const sock = getSocketForSession(sid);
-    if (sock?.readyState === sock.OPEN) {
+    if (sock?.readyState === WebSocket.OPEN) {
       sock.send(wire);
     }
   }

@@ -437,4 +437,226 @@ describe("createRelayServer", () => {
       await srv.close();
     });
   });
+
+  describe("metadata.patch fan-out and profile ACL", () => {
+    it("does not crash when fanning out metadata and a member has no connected socket", async () => {
+      const dbPath = testDbPath();
+      const srv = await createRelayServer({ dbPath, port: 0 });
+      const slug = `meta-fanout-${randomUUID().slice(0, 8)}`;
+
+      const wsHuman = await openWs(srv.url);
+      await handshake(wsHuman);
+      wsHuman.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "H",
+            runtime: "vitest",
+            workspaceLabel: "w",
+            isHuman: true,
+          },
+        }),
+      );
+      const hReg = (await nextJson(wsHuman)) as { sessionId?: string };
+      const humanId = hReg.sessionId!;
+      wsHuman.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: humanId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const hj = (await nextJson(wsHuman)) as { spaceId?: string };
+      const spaceId = hj.spaceId!;
+
+      const wsAgent = await openWs(srv.url);
+      await handshake(wsAgent);
+      wsAgent.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Agent",
+            runtime: "vitest",
+            workspaceLabel: "w",
+          },
+        }),
+      );
+      const aReg = (await nextJson(wsAgent)) as { sessionId?: string };
+      const agentId = aReg.sessionId!;
+      wsAgent.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: agentId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      await nextJson(wsAgent);
+
+      const wsAbsent = await openWs(srv.url);
+      await handshake(wsAbsent);
+      wsAbsent.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Absent",
+            runtime: "vitest",
+            workspaceLabel: "w",
+          },
+        }),
+      );
+      const abReg = (await nextJson(wsAbsent)) as { sessionId?: string };
+      const absentId = abReg.sessionId!;
+      wsAbsent.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: absentId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      await nextJson(wsAbsent);
+      wsAbsent.close();
+      await new Promise((r) => setTimeout(r, 50));
+
+      const metaP = nextJson(wsHuman);
+      wsAgent.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: agentId,
+          kind: "control",
+          type: "metadata.patch",
+          spaceId,
+          payload: {
+            namespace: "profile",
+            patch: { role: "worker", focus: "fixing bugs" },
+          },
+        }),
+      );
+      const collab = (await metaP) as {
+        type?: string;
+        sessionId?: string;
+        namespace?: string;
+        patch?: { role?: string; focus?: string };
+      };
+      expect(collab.type).toBe("collaboration.metadata");
+      expect(collab.sessionId).toBe(agentId);
+      expect(collab.namespace).toBe("profile");
+      expect(collab.patch?.role).toBe("worker");
+      expect(collab.patch?.focus).toBe("fixing bugs");
+
+      wsHuman.close();
+      wsAgent.close();
+      await new Promise((r) => setTimeout(r, 30));
+
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/oversight/space-summary?slug=${encodeURIComponent(slug)}`,
+      );
+      expect(res.status).toBe(200);
+      const summary = (await res.json()) as {
+        members?: Array<{ sessionId: string; role: string; focus: string }>;
+      };
+      const agentRow = summary.members?.find((m) => m.sessionId === agentId);
+      expect(agentRow?.role).toBe("worker");
+      expect(agentRow?.focus).toBe("fixing bugs");
+
+      await srv.close();
+    });
+
+    it("rejects agent metadata.patch profile that targets another session", async () => {
+      const srv = await createRelayServer({ dbPath: testDbPath(), port: 0 });
+      const slug = `meta-acl-${randomUUID().slice(0, 8)}`;
+
+      const wsHuman = await openWs(srv.url);
+      await handshake(wsHuman);
+      wsHuman.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "H",
+            runtime: "vitest",
+            workspaceLabel: "w",
+            isHuman: true,
+          },
+        }),
+      );
+      const hReg = (await nextJson(wsHuman)) as { sessionId?: string };
+      const humanId = hReg.sessionId!;
+      wsHuman.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: humanId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const hj = (await nextJson(wsHuman)) as { spaceId?: string };
+      const spaceId = hj.spaceId!;
+
+      const wsAgent = await openWs(srv.url);
+      await handshake(wsAgent);
+      wsAgent.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Agent",
+            runtime: "vitest",
+            workspaceLabel: "w",
+          },
+        }),
+      );
+      const aReg = (await nextJson(wsAgent)) as { sessionId?: string };
+      const agentId = aReg.sessionId!;
+      wsAgent.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: agentId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      await nextJson(wsAgent);
+
+      wsAgent.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: agentId,
+          kind: "control",
+          type: "metadata.patch",
+          spaceId,
+          payload: {
+            namespace: "profile",
+            targetSessionId: humanId,
+            patch: { role: "nope" },
+          },
+        }),
+      );
+      const err = (await nextJson(wsAgent)) as { type?: string; error?: string };
+      expect(err.type).toBe("protocol.error");
+      expect(err.error).toBe("metadata_patch_forbidden");
+
+      wsHuman.close();
+      wsAgent.close();
+      await srv.close();
+    });
+  });
 });

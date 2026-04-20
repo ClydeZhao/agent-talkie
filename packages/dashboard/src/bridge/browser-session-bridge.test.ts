@@ -257,6 +257,64 @@ describe("BrowserSessionBridge", () => {
     bridge.close();
   });
 
+  it("delivers collaboration.metadata to onCollaborationMetadata after join", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+
+    const spaceId = randomUUID();
+    const joinP = bridge.joinSpace({
+      slug: "default",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({
+      type: "space.joined",
+      spaceId,
+      slug: "default",
+    });
+    await joinP;
+
+    const received: Array<{ sessionId: string; namespace: string }> = [];
+    bridge.onCollaborationMetadata((m) => {
+      received.push({ sessionId: m.sessionId, namespace: m.namespace });
+    });
+
+    const peer = randomUUID();
+    ws.simulateInbound({
+      type: "collaboration.metadata",
+      spaceId,
+      sessionId: peer,
+      namespace: "profile",
+      patch: { role: "r1" },
+      updatedAt: Date.now(),
+    });
+
+    expect(received).toEqual([{ sessionId: peer, namespace: "profile" }]);
+    bridge.close();
+  });
+
   it("resumeFromStorage sends session.resume and persists new reconnectSecret", async () => {
     const store = new Map<string, string>();
     vi.stubGlobal(

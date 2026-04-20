@@ -15,10 +15,12 @@ import {
   SESSION_ID_KEY,
 } from "./session-storage-keys.js";
 import {
+  collaborationMetadataWireSchema,
   protocolErrorWireSchema,
   sessionRegisteredWireSchema,
   spaceJoinedWireSchema,
   transcriptCatchupMessageSchema,
+  type CollaborationMetadataWire,
   type ProtocolErrorWire,
 } from "./wire-schemas.js";
 
@@ -80,6 +82,9 @@ export class BrowserSessionBridge {
   private readonly catchupListeners = new Set<(row: TranscriptCatchupRow) => void>();
   private readonly protocolErrorListeners = new Set<
     (p: ProtocolErrorWire) => void
+  >();
+  private readonly collaborationMetadataListeners = new Set<
+    (m: CollaborationMetadataWire) => void
   >();
   private pendingJoin:
     | {
@@ -146,6 +151,15 @@ export class BrowserSessionBridge {
     this.protocolErrorListeners.add(cb);
     return () => {
       this.protocolErrorListeners.delete(cb);
+    };
+  }
+
+  onCollaborationMetadata(
+    cb: (m: CollaborationMetadataWire) => void,
+  ): () => void {
+    this.collaborationMetadataListeners.add(cb);
+    return () => {
+      this.collaborationMetadataListeners.delete(cb);
     };
   }
 
@@ -595,6 +609,18 @@ export class BrowserSessionBridge {
           } catch {
             /* ignore */
           }
+        }
+      }
+      return;
+    }
+
+    const collabMeta = collaborationMetadataWireSchema.safeParse(parsed);
+    if (collabMeta.success) {
+      for (const cb of this.collaborationMetadataListeners) {
+        try {
+          cb(collabMeta.data);
+        } catch {
+          /* ignore */
         }
       }
       return;
