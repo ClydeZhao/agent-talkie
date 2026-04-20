@@ -90,13 +90,13 @@ Plans:
   1. User can send messages from the dashboard with human→orchestrator default and optional direct session targeting.
   2. Space owner can designate or clear the orchestrator; roster or header reflects the current orchestrator immediately after success.
   3. User can retry a failed send using the same idempotency key and observe a single logical outcome in the transcript (no duplicate deliveries).
-**Plans**: TBD (target 3 plans: compose + send; orchestrator controls; idempotency key UX + relay integration)
+**Plans:** 3 plans (planned, not executed)
 **UI hint**: yes
 
 Plans:
-- [ ] 10-01: Send panel — targets, default route, validation feedback, relay authorize path
-- [ ] 10-02: Orchestrator controls — designate/clear with owner gating and error surfacing
-- [ ] 10-03: Idempotent send — client-generated keys, retry UI, deduped transcript observation
+- [ ] 10-01-PLAN.md — Bridge `sendEnvelope`、底栏 `talkie-send-bar`、send 目标 store、relay 人类 conversation sender echo（CTRL-01）
+- [ ] 10-02-PLAN.md — orchestrator wire 解析、名册菜单 designate/clear、实时刷新 orchestrator 位（CTRL-02）
+- [ ] 10-03-PLAN.md — `runConversationIdempotentTranscriptAppend` + routeEnvelope 集成、错误条「重试」、同一信封/key 重放（CTRL-03，relay Option A）
 
 ### Phase 11: Space & membership management
 **Goal:** Operators manage spaces and memberships from the UI without CLI fallback for these flows.
