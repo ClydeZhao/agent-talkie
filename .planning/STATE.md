@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Web Dashboard
 status: executing
-last_updated: "2026-04-20T06:40:33.641Z"
-last_activity: 2026-04-20 -- Phase 10 planning complete
+last_updated: "2026-04-20T14:55:00.000Z"
+last_activity: 2026-04-20 -- Completed 10-01-PLAN (CTRL-01 send path)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 13
-  completed_plans: 10
-  percent: 77
+  completed_plans: 11
+  percent: 79
 ---
 
 ## Project Reference
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-17)
 
 **Core value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
-**Current focus:** Phase 09 — Core oversight UI
+**Current focus:** Phase 10 — Interactive human controls (10-01 done)
 
 ## Current Position
 
-Phase: 9
-Plan: Phase 9 plans complete — next milestone / verification
-Status: Ready to execute
-Last activity: 2026-04-20 -- Phase 10 planning complete
+Phase: 10
+Plan: 10-01 complete — next: 10-02-PLAN.md (orchestrator designate/clear)
+Status: executing
+Last activity: 2026-04-20 -- 10-01-PLAN executed (send bar + relay echo)
 
 ## Accumulated Context
 

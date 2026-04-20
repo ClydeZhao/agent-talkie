@@ -26,7 +26,7 @@ Requirements for web dashboard milestone. Each maps to roadmap phases.
 
 ### Interactive Controls
 
-- [ ] **CTRL-01**: User can send messages from dashboard (human→orchestrator default, direct targeting)
+- [x] **CTRL-01**: User can send messages from dashboard (human→orchestrator default, direct targeting)
 - [ ] **CTRL-02**: User can designate/clear orchestrator from dashboard
 - [ ] **CTRL-03**: Send is idempotency-aware with safe retries
 
@@ -85,7 +85,7 @@ Deferred to future milestones. Tracked but not in current roadmap.
 | OVER-05 | Phase 12 | Pending |
 | OVER-06 | Phase 12 | Pending |
 | OVER-07 | Phase 9 | Complete |
-| CTRL-01 | Phase 10 | Pending |
+| CTRL-01 | Phase 10 | Complete |
 | CTRL-02 | Phase 10 | Pending |
 | CTRL-03 | Phase 10 | Pending |
 | MGMT-01 | Phase 11 | Pending |

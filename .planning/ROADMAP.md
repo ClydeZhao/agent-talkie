@@ -90,11 +90,11 @@ Plans:
   1. User can send messages from the dashboard with human→orchestrator default and optional direct session targeting.
   2. Space owner can designate or clear the orchestrator; roster or header reflects the current orchestrator immediately after success.
   3. User can retry a failed send using the same idempotency key and observe a single logical outcome in the transcript (no duplicate deliveries).
-**Plans:** 3 plans (planned, not executed)
+**Plans:** 1/3 plans executed (10-01 complete)
 **UI hint**: yes
 
 Plans:
-- [ ] 10-01-PLAN.md — Bridge `sendEnvelope`、底栏 `talkie-send-bar`、send 目标 store、relay 人类 conversation sender echo（CTRL-01）
+- [x] 10-01-PLAN.md — Bridge `sendEnvelope`、底栏 `talkie-send-bar`、send 目标 store、relay 人类 conversation sender echo（CTRL-01）
 - [ ] 10-02-PLAN.md — orchestrator wire 解析、名册菜单 designate/clear、实时刷新 orchestrator 位（CTRL-02）
 - [ ] 10-03-PLAN.md — `runConversationIdempotentTranscriptAppend` + routeEnvelope 集成、错误条「重试」、同一信封/key 重放（CTRL-03，relay Option A）
 
@@ -143,7 +143,7 @@ Plans:
 | 7. Browser connection & session bridge | v2.0 | 3/3 | Complete | - |
 | 8. Dashboard distribution & CLI entry | v2.0 | 3/3 | Complete | 2026-04-17 |
 | 9. Core oversight UI | v2.0 | 4/4 | Complete   | 2026-04-17 |
-| 10. Interactive human controls | v2.0 | 0/3 | Not started | - |
+| 10. Interactive human controls | v2.0 | 1/3 | In progress | - |
 | 11. Space & membership management | v2.0 | 0/3 | Not started | - |
 | 12. Discovery, topology & attention | v2.0 | 0/3 | Not started | - |
 
