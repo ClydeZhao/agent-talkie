@@ -218,7 +218,7 @@ export class TalkieSendBar extends LitElement {
       idempotencyKey: crypto.randomUUID(),
       ...(target !== null ? { to: target } : {}),
     };
-    this.bridge.sendEnvelope(envelope);
+    this.bridge.sendConversationWithRetryTracking(envelope);
     ta.value = "";
   }
 

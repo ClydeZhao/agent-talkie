@@ -1,5 +1,9 @@
 const DEMO_SPACE_SLUG = "dashboard";
 
+import {
+  orchestratorClearPayloadSchema,
+  orchestratorDesignatePayloadSchema,
+} from "@agent-talkie/protocol";
 import { BrowserSessionBridge } from "../bridge/browser-session-bridge.js";
 import { deriveHttpOriginFromWsUrl } from "../bridge/derive-http-origin.js";
 import {
@@ -110,7 +114,15 @@ void (async () => {
   });
 
   bridge.onProtocolError((w) => {
-    store.pushProtocolError(w);
+    if (bridge.hasRetryableConversation()) {
+      store.pushProtocolError(w, {
+        onRetry: () => {
+          bridge.retryLastConversation();
+        },
+      });
+    } else {
+      store.pushProtocolError(w);
+    }
   });
 
   bridge.onTranscriptCatchup((row) => {

@@ -49,9 +49,15 @@ export class TalkieErrorBar extends LitElement {
       margin: 0;
       line-height: 1.45;
     }
+    .actions {
+      display: flex;
+      flex-shrink: 0;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 2px;
+    }
     button {
       flex-shrink: 0;
-      margin-top: 2px;
       padding: 6px 12px;
       font-size: 12px;
       font-weight: 600;
@@ -106,21 +112,27 @@ export class TalkieErrorBar extends LitElement {
                 <p class="title">${e.title}</p>
                 <p class="hint">${e.hint}</p>
               </div>
-              ${e.sticky
-                ? html`<button
-                    type="button"
-                    part="dismiss"
-                    @click=${() => store.dismissError(e.id)}
-                  >
-                    关闭
-                  </button>`
-                : html`<button
-                    type="button"
-                    part="dismiss"
-                    @click=${() => store.dismissError(e.id)}
-                  >
-                    知道了
-                  </button>`}
+              <div class="actions" part="actions">
+                ${e.onRetry
+                  ? html`<button
+                      type="button"
+                      part="retry"
+                      @click=${() => {
+                        e.onRetry?.();
+                        store.dismissError(e.id);
+                      }}
+                    >
+                      Retry
+                    </button>`
+                  : nothing}
+                <button
+                  type="button"
+                  part="dismiss"
+                  @click=${() => store.dismissError(e.id)}
+                >
+                  ${e.sticky ? "关闭" : "知道了"}
+                </button>
+              </div>
             </div>
           `,
         )}

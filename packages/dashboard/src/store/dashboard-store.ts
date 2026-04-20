@@ -64,6 +64,7 @@ export type DashboardProtocolErrorItem = {
   hint: string;
   sticky: boolean;
   receivedAtMs: number;
+  onRetry?: (() => void) | undefined;
 };
 
 export class DashboardStore {
@@ -148,7 +149,10 @@ export class DashboardStore {
     return true;
   }
 
-  pushProtocolError(wire: ProtocolErrorWire): void {
+  pushProtocolError(
+    wire: ProtocolErrorWire,
+    options?: { onRetry?: () => void },
+  ): void {
     const copy = getRelayErrorCopy(wire.error);
     const id = crypto.randomUUID();
     const item: DashboardProtocolErrorItem = {
@@ -158,6 +162,7 @@ export class DashboardStore {
       hint: copy.hint,
       sticky: copy.sticky,
       receivedAtMs: Date.now(),
+      ...(options?.onRetry !== undefined ? { onRetry: options.onRetry } : {}),
     };
     this.errors = [item, ...this.errors].slice(0, 3);
     const kept = new Set(this.errors.map((e) => e.id));

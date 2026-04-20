@@ -125,6 +125,7 @@ export class BrowserSessionBridge {
   private _joinSucceededAtLeastOnce = false;
   private _reconnectAttemptIndex = 0;
   private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastRetryableEnvelope: Envelope | null = null;
 
   constructor(opts?: BrowserSessionBridgeOptions) {
     this.url = opts?.url ?? DEFAULT_URL;
@@ -153,6 +154,26 @@ export class BrowserSessionBridge {
       throw new Error("sendEnvelope: invalid envelope");
     }
     ws.send(JSON.stringify(envelope));
+  }
+
+  /** Tracks the envelope for error-bar Retry (D-10/D-11); same object reference on retry. */
+  sendConversationWithRetryTracking(envelope: Envelope): void {
+    if (envelope.kind !== "conversation") {
+      throw new Error("sendConversationWithRetryTracking: not_conversation");
+    }
+    this.lastRetryableEnvelope = envelope;
+    this.sendEnvelope(envelope);
+  }
+
+  retryLastConversation(): void {
+    if (this.lastRetryableEnvelope === null) {
+      throw new Error("retryLastConversation: no_retry");
+    }
+    this.sendEnvelope(this.lastRetryableEnvelope);
+  }
+
+  hasRetryableConversation(): boolean {
+    return this.lastRetryableEnvelope !== null;
   }
 
   getMaxRelaySeq(): number {

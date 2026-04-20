@@ -564,4 +564,104 @@ describe("BrowserSessionBridge", () => {
 
     bridge.close();
   });
+
+  it("sendConversationWithRetryTracking rejects non-conversation", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+    const spaceId = randomUUID();
+    const joinP = bridge.joinSpace({
+      slug: "default",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({ type: "space.joined", spaceId, slug: "default" });
+    await joinP;
+
+    const control: Envelope = {
+      version: 1,
+      id: randomUUID(),
+      sessionId,
+      kind: "control",
+      type: "space.join",
+      payload: { slug: "x" },
+      idempotencyKey: randomUUID(),
+      spaceId,
+    };
+    expect(() => bridge.sendConversationWithRetryTracking(control)).toThrow(
+      /not_conversation/,
+    );
+    bridge.close();
+  });
+
+  it("retryLastConversation resends the same envelope JSON", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+    const spaceId = randomUUID();
+    const joinP = bridge.joinSpace({
+      slug: "default",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({ type: "space.joined", spaceId, slug: "default" });
+    await joinP;
+
+    const env: Envelope = {
+      version: 1,
+      id: randomUUID(),
+      sessionId,
+      kind: "conversation",
+      type: "chat.message",
+      payload: { text: "retry-me" },
+      spaceId,
+      idempotencyKey: randomUUID(),
+    };
+    bridge.sendConversationWithRetryTracking(env);
+    expect(bridge.hasRetryableConversation()).toBe(true);
+    const firstJson = ws.sent[ws.sent.length - 1]!;
+    bridge.retryLastConversation();
+    const secondJson = ws.sent[ws.sent.length - 1]!;
+    expect(secondJson).toBe(firstJson);
+
+    bridge.close();
+  });
 });
