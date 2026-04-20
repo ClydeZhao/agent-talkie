@@ -99,7 +99,12 @@ describe("routeEnvelope orchestrator defaults", () => {
       sessionId: idH,
       kind: "conversation",
     });
-    expect(wsH.sent).toHaveLength(0);
+    expect(wsH.sent).toHaveLength(1);
+    expect(JSON.parse(wsH.sent[0]!) as Envelope).toMatchObject({
+      sessionId: idH,
+      kind: "conversation",
+      payload: { text: "hi" },
+    });
   });
 
   it("human undirected conversation with no orchestrator yields no_orchestrator", () => {

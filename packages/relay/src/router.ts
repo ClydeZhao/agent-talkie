@@ -167,6 +167,7 @@ export function routeEnvelope(ctx: {
       return;
     }
     orchWs.send(wire);
+    senderWs.send(wire);
     return;
   }
 
@@ -178,6 +179,9 @@ export function routeEnvelope(ctx: {
     const targetWs = getSocketForSession(envelope.to);
     if (targetWs?.readyState === WebSocket.OPEN) {
       targetWs.send(wire);
+    }
+    if (senderSession.isHuman && envelope.kind === "conversation") {
+      senderWs.send(wire);
     }
     return;
   }
@@ -197,5 +201,9 @@ export function routeEnvelope(ctx: {
     if (sock?.readyState === WebSocket.OPEN) {
       sock.send(wire);
     }
+  }
+
+  if (senderSession.isHuman && envelope.kind === "conversation") {
+    senderWs.send(wire);
   }
 }
