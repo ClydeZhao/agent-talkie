@@ -9,17 +9,25 @@ export class TalkieRosterEntry extends LitElement {
     :host {
       display: block;
     }
-    .row {
+    .row-wrap {
+      display: flex;
+      align-items: stretch;
+      border-bottom: 1px solid var(--talkie-border, #30363d);
+      box-sizing: border-box;
+    }
+    .row-wrap.row-wrap--blocked .row-main {
+      border: 1px solid #dc2626;
+      border-bottom: none;
+    }
+    .row-main {
+      flex: 1;
+      min-width: 0;
       display: flex;
       align-items: flex-start;
       gap: 10px;
       padding: 10px 12px;
-      border-bottom: 1px solid var(--talkie-border, #30363d);
       box-sizing: border-box;
       cursor: pointer;
-    }
-    .row.row--blocked {
-      border: 1px solid #dc2626;
     }
     .icon-wrap {
       position: relative;
@@ -125,18 +133,110 @@ export class TalkieRosterEntry extends LitElement {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .menu {
+      position: relative;
+      flex-shrink: 0;
+      align-self: stretch;
+    }
+    .menu-summary {
+      list-style: none;
+      height: 100%;
+      min-width: 36px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 10px 8px 0;
+      margin: 0;
+      cursor: pointer;
+      color: var(--talkie-muted, #8b949e);
+      font-size: 18px;
+      line-height: 1;
+      user-select: none;
+    }
+    .menu-summary::-webkit-details-marker {
+      display: none;
+    }
+    .menu-panel {
+      position: absolute;
+      right: 4px;
+      top: 100%;
+      margin-top: -4px;
+      min-width: 220px;
+      background: var(--talkie-surface, #161b22);
+      border: 1px solid var(--talkie-border, #30363d);
+      border-radius: 6px;
+      padding: 6px 0;
+      z-index: 30;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    }
+    .menu-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.35;
+      background: transparent;
+      border: none;
+      color: var(--talkie-fg, #e6edf3);
+      cursor: pointer;
+    }
+    .menu-item:hover {
+      background: var(--talkie-badge-bg, #21262d);
+    }
   `;
 
   @property({ type: Object })
   row: RosterRow | undefined;
 
-  private _onRowClick(): void {
+  private _closeMenu(): void {
+    const d = this.renderRoot?.querySelector("details.menu");
+    if (d instanceof HTMLDetailsElement) {
+      d.open = false;
+    }
+  }
+
+  private _onSelectSendTarget(): void {
     const r = this.row;
     if (!r) {
       return;
     }
     this.dispatchEvent(
-      new CustomEvent("talkie-toggle-send-target", {
+      new CustomEvent("talkie-select-send-target", {
+        detail: { sessionId: r.sessionId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private _onDesignate(ev: Event): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const r = this.row;
+    if (!r) {
+      return;
+    }
+    this._closeMenu();
+    this.dispatchEvent(
+      new CustomEvent("talkie-orchestrate-designate", {
+        detail: { sessionId: r.sessionId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private _onClear(ev: Event): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const r = this.row;
+    if (!r) {
+      return;
+    }
+    this._closeMenu();
+    this.dispatchEvent(
+      new CustomEvent("talkie-orchestrate-clear", {
         detail: { sessionId: r.sessionId },
         bubbles: true,
         composed: true,
@@ -153,43 +253,79 @@ export class TalkieRosterEntry extends LitElement {
     const blocked = prog === "blocked";
     const titleAttr =
       blocked && r.blockedReason.length > 0 ? r.blockedReason : nothing;
+    const ownerMenu =
+      r.owner === true
+        ? html`
+            <details class="menu" @click=${(e: Event) => e.stopPropagation()}>
+              <summary
+                class="menu-summary"
+                @click=${(e: Event) => e.stopPropagation()}
+                aria-label="Session actions"
+              >
+                ⋯
+              </summary>
+              <div class="menu-panel">
+                ${!r.orchestrator
+                  ? html`<button
+                      type="button"
+                      class="menu-item"
+                      @click=${this._onDesignate}
+                    >
+                      Designate as orchestrator
+                    </button>`
+                  : html`<button
+                      type="button"
+                      class="menu-item"
+                      @click=${this._onClear}
+                    >
+                      Clear orchestrator
+                    </button>`}
+              </div>
+            </details>
+          `
+        : nothing;
     return html`
-      <div
-        class="row ${blocked ? "row--blocked" : ""}"
-        title=${titleAttr}
-        role="button"
-        tabindex="0"
-        @click=${this._onRowClick}
-        @keydown=${(e: KeyboardEvent) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            this._onRowClick();
-          }
-        }}
-      >
-        <div class="icon-wrap">
-          ${r.isHuman ? this._personIcon() : this._botIcon()}
-          ${r.orchestrator ? this._starIcon() : null}
-        </div>
-        <div class="main">
-          <div class="name">${r.displayName}</div>
-          <div class="chips-row">
-            ${r.role
-              ? html`<span class="chip">role:${r.role}</span>`
-              : nothing}
-            ${r.focus
-              ? html`<span class="chip">${this._truncFocus(r.focus)}</span>`
-              : nothing}
-            <span class="progress-wrap">
-              <span class="progress-dot progress-dot--${prog}"></span>
-              <span class="progress-label">${prog}</span>
-            </span>
+      <div class="row-wrap ${blocked ? "row-wrap--blocked" : ""}">
+        <div
+          class="row-main"
+          title=${titleAttr}
+          role="button"
+          tabindex="0"
+          @click=${this._onSelectSendTarget}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              this._onSelectSendTarget();
+            }
+          }}
+        >
+          <div class="icon-wrap">
+            ${r.isHuman ? this._personIcon() : this._botIcon()}
+            ${r.orchestrator ? this._starIcon() : null}
           </div>
-          <div class="meta">
-            <span class="badge" title=${r.runtime}>${r.runtime}</span>
-            <span class="badge" title=${r.workspaceLabel}>${r.workspaceLabel}</span>
+          <div class="main">
+            <div class="name">${r.displayName}</div>
+            <div class="chips-row">
+              ${r.role
+                ? html`<span class="chip">role:${r.role}</span>`
+                : nothing}
+              ${r.focus
+                ? html`<span class="chip">${this._truncFocus(r.focus)}</span>`
+                : nothing}
+              <span class="progress-wrap">
+                <span class="progress-dot progress-dot--${prog}"></span>
+                <span class="progress-label">${prog}</span>
+              </span>
+            </div>
+            <div class="meta">
+              <span class="badge" title=${r.runtime}>${r.runtime}</span>
+              <span class="badge" title=${r.workspaceLabel}
+                >${r.workspaceLabel}</span
+              >
+            </div>
           </div>
         </div>
+        ${ownerMenu}
       </div>
     `;
   }

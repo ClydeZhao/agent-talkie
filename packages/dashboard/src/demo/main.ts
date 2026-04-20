@@ -50,9 +50,52 @@ void (async () => {
   sendBar.bridge = bridge;
   mainPanel.appendChild(sendBar);
 
-  roster.addEventListener("talkie-toggle-send-target", (ev) => {
+  roster.addEventListener("talkie-select-send-target", (ev) => {
     const sid = (ev as CustomEvent<{ sessionId: string }>).detail.sessionId;
     store.toggleSendTargetSession(sid);
+  });
+
+  roster.addEventListener("talkie-orchestrate-designate", (ev) => {
+    const sid = (ev as CustomEvent<{ sessionId: string }>).detail.sessionId;
+    const version = bridge.getNegotiatedEnvelopeVersion();
+    const sessionId = bridge.getRegisteredSessionId();
+    const spaceId = store.activeSpaceId;
+    if (version === null || sessionId === null || spaceId === null) {
+      return;
+    }
+    const payload = orchestratorDesignatePayloadSchema.parse({
+      orchestratorSessionId: sid,
+    });
+    bridge.sendEnvelope({
+      version,
+      id: crypto.randomUUID(),
+      sessionId,
+      kind: "control",
+      type: "orchestrator.designate",
+      payload,
+      idempotencyKey: crypto.randomUUID(),
+      spaceId,
+    });
+  });
+
+  roster.addEventListener("talkie-orchestrate-clear", () => {
+    const version = bridge.getNegotiatedEnvelopeVersion();
+    const sessionId = bridge.getRegisteredSessionId();
+    const spaceId = store.activeSpaceId;
+    if (version === null || sessionId === null || spaceId === null) {
+      return;
+    }
+    const payload = orchestratorClearPayloadSchema.parse({});
+    bridge.sendEnvelope({
+      version,
+      id: crypto.randomUUID(),
+      sessionId,
+      kind: "control",
+      type: "orchestrator.clear",
+      payload,
+      idempotencyKey: crypto.randomUUID(),
+      spaceId,
+    });
   });
 
   bodyRow.appendChild(roster);
@@ -79,6 +122,16 @@ void (async () => {
   });
   bridge.onCollaborationMetadata((msg) => {
     store.applyCollaborationMetadataWire(msg);
+  });
+
+  bridge.onOrchestratorRosterWire((msg) => {
+    if (msg.type === "orchestrator.designated") {
+      store.syncOrchestratorFromRelay(msg.spaceId, msg.orchestratorSessionId);
+    } else if (msg.type === "orchestrator.cleared") {
+      store.syncOrchestratorFromRelay(msg.spaceId, null);
+    } else {
+      store.syncOrchestratorFromRelay(msg.spaceId, msg.orchestratorSessionId);
+    }
   });
 
   bridge.onConnectionHealthChange((s) => {
