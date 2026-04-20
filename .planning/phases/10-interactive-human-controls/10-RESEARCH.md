@@ -222,7 +222,7 @@ const envelope = {
   id: crypto.randomUUID(),
   sessionId: registeredSessionId,
   kind: "conversation" as const,
-  type: "message.user", // 或项目约定的对话 type 字符串
+  type: "chat.message", // 广播/默认 orchestrator 路径；直连用 "chat.direct" + `to` [VERIFIED: packages/relay/src/integration.test.ts]
   payload: { text: "..." },
   spaceId: activeSpaceId,
   idempotencyKey: crypto.randomUUID(),
@@ -230,7 +230,7 @@ const envelope = {
 };
 ```
 
-（具体 `type` / `payload` 形状须与现有 CLI/adapter 与 relay 期望对齐——请在计划中 grep `conversation` 发送方。）[需实现时 VERIFIED]
+集成测试已使用 `chat.message`（无 `to`）与 `chat.direct`（有 `to`）；adapter 可能另有 type，规划时应对齐「仪表盘 → orchestrator」与「仪表盘 → 直连」的 type 策略。[VERIFIED: `packages/relay/src/integration.test.ts`]
 
 ### Join 信封模式（已有）
 
@@ -264,7 +264,7 @@ const envelope = {
 
 | # | 假设 | 章节 | 若错误的影响 |
 |---|------|------|----------------|
-| A1 | 存在已约定的 `conversation` `type` + `payload`（与 watch/CLI 一致） | Code Examples | 若各客户端不一致，需先统一协议或兼容多种 type |
+| A1 | 仪表盘人类发送采用 `chat.message` / `chat.direct` 与集成测试一致 | Code Examples | 若产品要求与某 adapter 的 type 对齐，需在 PLAN 中显式选 type |
 | A2 | Phase 10 UAT 以「当前单机 relay + 浏览器」为主 | Environment | 远程/wss 非 v2.0 范围 |
 
 ## Open Questions
@@ -275,7 +275,8 @@ const envelope = {
    - **建议：** 规划会议二选一并写清验收步骤（含重连后 catch-up）。
 
 2. **`conversation` 的规范 type/payload**  
-   - **建议：** grep `kind: "conversation"` / `sendEnvelope` 调用点，锁定单一规范写入 PLAN。
+   - **已知：** relay 集成测试使用 `chat.message` / `chat.direct` + `payload.text`。  
+   - **建议：** 对照 `adapter-cursor-mcp` / `adapter-codex` 等发送的 `type`，在 PLAN 中写死仪表盘默认 type，避免 orchestrator 侧解析分叉。
 
 3. **直连离线是否要在本阶段修 relay**  
    - 若产品要求与 `orchestrator_offline` 一致，需新增错误码或行为变更。
