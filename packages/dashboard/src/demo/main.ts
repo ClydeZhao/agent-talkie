@@ -1,3 +1,4 @@
+// MGMT-02 invite: N/A for localhost v2.0 per phase 11 CONTEXT D-06; sessions join via adapter/CLI.
 const DEMO_SPACE_SLUG = "dashboard";
 
 import {
@@ -102,6 +103,22 @@ void (async () => {
     });
   });
 
+  roster.addEventListener("talkie-membership-remove", (ev) => {
+    const targetSessionId = (ev as CustomEvent<{ sessionId: string }>).detail
+      .sessionId;
+    const version = bridge.getNegotiatedEnvelopeVersion();
+    const sessionId = bridge.getRegisteredSessionId();
+    const spaceId = store.activeSpaceId;
+    if (version === null || sessionId === null || spaceId === null) {
+      return;
+    }
+    bridge.sendMembershipRemove({
+      spaceId,
+      targetSessionId,
+      idempotencyKey: crypto.randomUUID(),
+    });
+  });
+
   bodyRow.appendChild(roster);
   bodyRow.appendChild(mainPanel);
 
@@ -111,6 +128,8 @@ void (async () => {
 
   store.addListener(() => {
     roster.entries = Array.from(store.roster.values());
+    roster.selfIsOwner = store.selfIsOwner;
+    roster.selfSessionId = store.selfSessionId ?? "";
   });
 
   bridge.onProtocolError((w) => {
@@ -143,6 +162,14 @@ void (async () => {
       store.syncOrchestratorFromRelay(msg.spaceId, null);
     } else {
       store.syncOrchestratorFromRelay(msg.spaceId, msg.orchestratorSessionId);
+    }
+  });
+
+  let pullSpaceSummary: () => Promise<void> = async () => {};
+
+  bridge.onMembershipRemovedWire((msg) => {
+    if (store.activeSpaceId !== null && msg.spaceId === store.activeSpaceId) {
+      void pullSpaceSummary();
     }
   });
 
@@ -193,7 +220,7 @@ void (async () => {
     });
     store.setActiveSpaceId(joined.spaceId);
 
-    const pullSpaceSummary = async (): Promise<void> => {
+    pullSpaceSummary = async (): Promise<void> => {
       const res = await fetch(
         `${httpOrigin}/__agent-talkie/v1/oversight/space-summary?slug=${encodeURIComponent(DEMO_SPACE_SLUG)}`,
       );
@@ -202,6 +229,8 @@ void (async () => {
         store.hydrateFromSpaceSummary(summary, selfSessionId);
       }
     };
+
+    roster.selfSessionId = selfSessionId;
 
     await pullSpaceSummary();
     store.scheduleSnapshotRefresh(pullSpaceSummary, 10000);

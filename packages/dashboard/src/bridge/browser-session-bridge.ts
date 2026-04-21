@@ -17,6 +17,7 @@ import {
 import {
   collaborationMetadataWireSchema,
   collaborationOrchestratorWireSchema,
+  membershipRemovedWireSchema,
   orchestratorClearedWireSchema,
   orchestratorDesignatedWireSchema,
   protocolErrorWireSchema,
@@ -24,6 +25,7 @@ import {
   spaceJoinedWireSchema,
   transcriptCatchupMessageSchema,
   type CollaborationMetadataWire,
+  type MembershipRemovedWire,
   type OrchestratorRosterWire,
   type ProtocolErrorWire,
 } from "./wire-schemas.js";
@@ -92,6 +94,9 @@ export class BrowserSessionBridge {
   >();
   private readonly orchestratorRosterListeners = new Set<
     (m: OrchestratorRosterWire) => void
+  >();
+  private readonly membershipRemovedListeners = new Set<
+    (m: MembershipRemovedWire) => void
   >();
   private pendingJoin:
     | {
@@ -214,6 +219,13 @@ export class BrowserSessionBridge {
     this.orchestratorRosterListeners.add(cb);
     return () => {
       this.orchestratorRosterListeners.delete(cb);
+    };
+  }
+
+  onMembershipRemovedWire(cb: (m: MembershipRemovedWire) => void): () => void {
+    this.membershipRemovedListeners.add(cb);
+    return () => {
+      this.membershipRemovedListeners.delete(cb);
     };
   }
 
@@ -706,6 +718,18 @@ export class BrowserSessionBridge {
       return;
     }
 
+    const membershipRemoved = membershipRemovedWireSchema.safeParse(parsed);
+    if (membershipRemoved.success) {
+      for (const cb of this.membershipRemovedListeners) {
+        try {
+          cb(membershipRemoved.data);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
+
     const env = safeParseEnvelope(parsed);
     if (env.success) {
       for (const h of this.envelopeHandlers) {
@@ -833,6 +857,35 @@ export class BrowserSessionBridge {
         }),
       );
     });
+  }
+
+  sendMembershipRemove(args: {
+    spaceId: string;
+    targetSessionId: string;
+    idempotencyKey: string;
+  }): void {
+    if (this.negotiatedVersion === null || this.registeredSessionId === null) {
+      throw new Error("sendMembershipRemove: not_ready");
+    }
+    const ws = this.socket;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error("sendMembershipRemove: socket_not_open");
+    }
+    const envelope: Envelope = {
+      version: this.negotiatedVersion,
+      id: crypto.randomUUID(),
+      sessionId: this.registeredSessionId,
+      kind: "control",
+      type: "membership.remove",
+      payload: { targetSessionId: args.targetSessionId },
+      idempotencyKey: args.idempotencyKey,
+      spaceId: args.spaceId,
+    };
+    const parsed = safeParseEnvelope(envelope);
+    if (!parsed.success) {
+      throw new Error("sendMembershipRemove: invalid envelope");
+    }
+    ws.send(JSON.stringify(envelope));
   }
 
   close(): void {

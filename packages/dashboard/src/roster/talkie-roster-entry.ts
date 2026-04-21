@@ -189,6 +189,12 @@ export class TalkieRosterEntry extends LitElement {
   @property({ type: Object })
   row: RosterRow | undefined;
 
+  @property({ type: Boolean })
+  selfIsOwner = false;
+
+  @property({ type: String })
+  selfSessionId = "";
+
   private _closeMenu(): void {
     const d = this.renderRoot?.querySelector("details.menu");
     if (d instanceof HTMLDetailsElement) {
@@ -244,6 +250,23 @@ export class TalkieRosterEntry extends LitElement {
     );
   }
 
+  private _onRemove(ev: Event): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const r = this.row;
+    if (!r) {
+      return;
+    }
+    this._closeMenu();
+    this.dispatchEvent(
+      new CustomEvent("talkie-membership-remove", {
+        detail: { sessionId: r.sessionId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   render() {
     const r = this.row;
     if (!r) {
@@ -254,7 +277,7 @@ export class TalkieRosterEntry extends LitElement {
     const titleAttr =
       blocked && r.blockedReason.length > 0 ? r.blockedReason : nothing;
     const ownerMenu =
-      r.owner === true
+      this.selfIsOwner
         ? html`
             <details class="menu" @click=${(e: Event) => e.stopPropagation()}>
               <summary
@@ -280,6 +303,15 @@ export class TalkieRosterEntry extends LitElement {
                     >
                       Clear orchestrator
                     </button>`}
+                ${this.selfSessionId.length > 0 &&
+                r.sessionId !== this.selfSessionId &&
+                !r.owner
+                  ? html`<button
+                      type="button"
+                      class="menu-item"
+                      @click=${this._onRemove}
+                    >Remove</button>`
+                  : nothing}
               </div>
             </details>
           `

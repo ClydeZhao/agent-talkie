@@ -34,6 +34,12 @@ export class TalkieRoster extends LitElement {
   @property({ type: Array })
   entries: RosterRow[] = [];
 
+  @property({ type: Boolean })
+  selfIsOwner = false;
+
+  @property({ type: String })
+  selfSessionId = "";
+
   render() {
     const sorted = [...this.entries].sort((a, b) => {
       const aBlocked = a.progress === "blocked" ? 1 : 0;
@@ -49,7 +55,11 @@ export class TalkieRoster extends LitElement {
         ? html`<div class="empty">No members yet</div>`
         : sorted.map(
             (row) =>
-              html`<talkie-roster-entry .row=${row}></talkie-roster-entry>`,
+              html`<talkie-roster-entry
+                .row=${row}
+                .selfIsOwner=${this.selfIsOwner}
+                .selfSessionId=${this.selfSessionId}
+              ></talkie-roster-entry>`,
           )}
     `;
   }

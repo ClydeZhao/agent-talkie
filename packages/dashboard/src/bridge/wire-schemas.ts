@@ -24,6 +24,14 @@ export const spaceJoinedWireSchema = z.object({
   spaceId: z.string(),
 });
 
+export const membershipRemovedWireSchema = z.object({
+  type: z.literal("membership.removed"),
+  spaceId: z.string(),
+  targetSessionId: z.string(),
+});
+
+export type MembershipRemovedWire = z.infer<typeof membershipRemovedWireSchema>;
+
 export const protocolErrorWireSchema = z.object({
   type: z.literal("protocol.error"),
   error: z.string(),

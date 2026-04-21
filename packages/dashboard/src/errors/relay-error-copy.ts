@@ -101,6 +101,21 @@ export const RELAY_ERROR_COPY: Record<string, RelayErrorCopy> = {
     hint: "无需重复加入；若状态异常可刷新页面后重试。",
     sticky: false,
   },
+  cannot_remove_space_owner: {
+    title: "无法移除空间所有者",
+    hint: "空间所有者不能被移出；请先转移所有权或销毁空间（若产品支持）。",
+    sticky: false,
+  },
+  membership_remove_self: {
+    title: "不能移除自己的会话",
+    hint: "请选择其他成员进行移除。",
+    sticky: false,
+  },
+  target_not_in_space: {
+    title: "目标会话不在该空间",
+    hint: "名册可能已过期；请刷新快照后重试。",
+    sticky: false,
+  },
 };
 
 export function getRelayErrorCopy(code: string): RelayErrorCopy {
