@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Web Dashboard
 status: executing
-last_updated: "2026-04-21T14:20:00.000Z"
-last_activity: 2026-04-21 -- Phase 11 plan 11-01 executed
+last_updated: "2026-04-21T14:25:00.000Z"
+last_activity: 2026-04-21 -- Phase 11 plan 11-02 membership.remove complete
 progress:
   total_phases: 6
   completed_phases: 4
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-17)
 
 **Core value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
-**Current focus:** Phase 11 in progress; 11-01 (relay `space.destroy`) complete; next: 11-02
+**Current focus:** Phase 11 in progress; 11-02 (`membership.remove` + dashboard Remove) complete; next: 11-03
 
 ## Current Position
 
 Phase: 11-space-membership-management
-Plan: 11-01 complete — next: 11-02
+Plan: 11-02 complete — next: 11-03 (space picker / oversight spaces / destroy UI)
 Status: Executing Phase 11
-Last activity: 2026-04-21 -- 11-01 relay space.destroy shipped
+Last activity: 2026-04-21 -- 11-02 shipped
 
 ## Accumulated Context
 
