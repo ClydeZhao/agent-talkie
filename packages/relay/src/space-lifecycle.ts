@@ -32,6 +32,24 @@ export type SpaceDestroyOutcome =
   | { kind: "destroyed"; slug: string; closeSessionIds: string[] }
   | { kind: "error"; error: string; closeConnection?: boolean };
 
+export type MembershipRemoveOutcome =
+  | { kind: "removed"; spaceId: string; targetSessionId: string }
+  | { kind: "error"; error: string; closeConnection?: boolean };
+
+function hasActiveMembershipInSpace(
+  db: Database.Database,
+  spaceId: string,
+  sessionId: string,
+): boolean {
+  const row = db
+    .prepare(
+      `SELECT 1 AS x FROM space_memberships
+       WHERE space_id = ? AND session_id = ? AND left_at IS NULL`,
+    )
+    .get(spaceId, sessionId) as { x: number } | undefined;
+  return row !== undefined;
+}
+
 function resolveOrCreateSpaceForSlug(
   db: Database.Database,
   slugNorm: string,
@@ -313,6 +331,83 @@ export function handleSpaceDestroy(
   return db.transaction(run)();
 }
 
+/**
+ * Owner-only membership remove: marks target membership left; may archive space when last member leaves.
+ */
+export function handleMembershipRemove(
+  db: Database.Database,
+  args: {
+    sessionId: string;
+    spaceId: string;
+    targetSessionId: string;
+    idempotencyKey: string;
+    nowMs: number;
+  },
+): MembershipRemoveOutcome {
+  const run = (): MembershipRemoveOutcome => {
+    const { inserted } = tryRecordIdempotencyKey(
+      db,
+      args.idempotencyKey,
+      args.sessionId,
+      args.nowMs,
+    );
+
+    if (!inserted) {
+      if (!hasActiveMembershipInSpace(db, args.spaceId, args.targetSessionId)) {
+        return {
+          kind: "removed",
+          spaceId: args.spaceId,
+          targetSessionId: args.targetSessionId,
+        };
+      }
+      return {
+        kind: "error",
+        error: "idempotency_replay_mismatch",
+        closeConnection: true,
+      };
+    }
+
+    const senderMem = findActiveMembershipForSession(db, args.sessionId);
+    if (!senderMem || senderMem.spaceId !== args.spaceId) {
+      return { kind: "error", error: "not_in_space" };
+    }
+
+    const ownerId = getSpaceOwnerSessionId(db, args.spaceId);
+    if (ownerId !== args.sessionId) {
+      return { kind: "error", error: "not_space_owner" };
+    }
+
+    const sess = getSessionById(db, args.sessionId);
+    if (!sess?.isHuman) {
+      return { kind: "error", error: "not_space_owner" };
+    }
+
+    if (args.targetSessionId === args.sessionId) {
+      return { kind: "error", error: "membership_remove_self" };
+    }
+
+    if (ownerId && args.targetSessionId === ownerId) {
+      return { kind: "error", error: "cannot_remove_space_owner" };
+    }
+
+    if (!hasActiveMembershipInSpace(db, args.spaceId, args.targetSessionId)) {
+      return { kind: "error", error: "target_not_in_space" };
+    }
+
+    markMembershipLeft(db, args.spaceId, args.targetSessionId, args.nowMs);
+    if (countActiveMembers(db, args.spaceId, args.nowMs) === 0) {
+      setSpaceArchived(db, args.spaceId, args.nowMs, LAST_MEMBER_ARCHIVE_TTL_MS);
+    }
+    return {
+      kind: "removed",
+      spaceId: args.spaceId,
+      targetSessionId: args.targetSessionId,
+    };
+  };
+
+  return db.transaction(run)();
+}
+
 export function isSpaceJoinEnvelope(envelope: Envelope): boolean {
   return envelope.kind === "control" && envelope.type === "space.join";
 }
@@ -323,6 +418,10 @@ export function isSpaceLeaveEnvelope(envelope: Envelope): boolean {
 
 export function isSpaceDestroyEnvelope(envelope: Envelope): boolean {
   return envelope.kind === "control" && envelope.type === "space.destroy";
+}
+
+export function isMembershipRemoveEnvelope(envelope: Envelope): boolean {
+  return envelope.kind === "control" && envelope.type === "membership.remove";
 }
 
 /** Periodic GC: remove archived spaces past expiry (memberships/transcript CASCADE). */

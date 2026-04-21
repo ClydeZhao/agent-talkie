@@ -28,9 +28,11 @@ import { handleCollaborationControl } from "./collaboration-handlers.js";
 import { routeEnvelope } from "./router.js";
 import { SessionRegistry } from "./session-registry.js";
 import {
+  handleMembershipRemove,
   handleSpaceDestroy,
   handleSpaceJoin,
   handleSpaceLeave,
+  isMembershipRemoveEnvelope,
   isSpaceDestroyEnvelope,
   isSpaceJoinEnvelope,
   isSpaceLeaveEnvelope,
@@ -177,6 +179,45 @@ export function dispatchValidatedEnvelope(
       }
     }
     ctx.ws.close();
+    return;
+  }
+
+  if (isMembershipRemoveEnvelope(envelope)) {
+    const idempotencyKey = envelope.idempotencyKey;
+    if (!idempotencyKey) {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const spaceId = envelope.spaceId;
+    if (typeof spaceId !== "string") {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const targetSessionId = envelope.payload.targetSessionId;
+    if (typeof targetSessionId !== "string") {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const out = handleMembershipRemove(ctx.db, {
+      sessionId: ctx.boundSessionId,
+      spaceId,
+      targetSessionId,
+      idempotencyKey,
+      nowMs: Date.now(),
+    });
+    if (out.kind === "error") {
+      sendJson(ctx.ws, { type: "protocol.error", error: out.error });
+      if (out.closeConnection) {
+        ctx.ws.close();
+      }
+      return;
+    }
+    sendJson(ctx.ws, {
+      type: "membership.removed",
+      spaceId: out.spaceId,
+      targetSessionId: out.targetSessionId,
+    });
+    ctx.registry.get(out.targetSessionId)?.close();
     return;
   }
 
