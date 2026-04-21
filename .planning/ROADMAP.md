@@ -110,7 +110,7 @@ Plans:
 **UI hint**: yes
 
 Plans:
-- [ ] 11-01-PLAN.md — Relay `space.destroy`：`handleSpaceDestroy`、调度、`space.destroyed`、SessionRegistry 踢线、Vitest（MGMT-01 服务端）
+- [x] 11-01-PLAN.md — Relay `space.destroy`：`handleSpaceDestroy`、调度、`space.destroyed`、SessionRegistry 踢线、Vitest（MGMT-01 服务端）
 - [ ] 11-02-PLAN.md — Relay `membership.remove` + 仪表盘 `sendMembershipRemove`、名册 Owner-only Remove、MGMT-02 invite N/A 注释（MGMT-02）
 - [ ] 11-03-PLAN.md — `listOversightSpaces` + `GET /oversight/spaces`、`talkie-space-picker`、`?space=`/`default`、`sendSpaceDestroy` 与创建 join（MGMT-01 UI + MGMT-03）
 
@@ -144,7 +144,7 @@ Plans:
 | 8. Dashboard distribution & CLI entry | v2.0 | 3/3 | Complete | 2026-04-17 |
 | 9. Core oversight UI | v2.0 | 4/4 | Complete   | 2026-04-17 |
 | 10. Interactive human controls | v2.0 | 3/3 | Complete | 2026-04-20 |
-| 11. Space & membership management | v2.0 | 0/3 | Planned | - |
+| 11. Space & membership management | v2.0 | 1/3 | In progress | - |
 | 12. Discovery, topology & attention | v2.0 | 0/3 | Not started | - |
 
 ---
