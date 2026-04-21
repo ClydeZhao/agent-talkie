@@ -37,6 +37,14 @@ export type OversightSpaceSummary = {
   members: OversightMemberSnapshot[];
 };
 
+/** Mirrors `GET /oversight/spaces` rows (inline to avoid dashboard → persistence dependency). */
+export type SpaceListRow = {
+  slug: string;
+  memberCount: number;
+  ownerSessionId: string | null;
+  orchestratorSessionId: string | null;
+};
+
 export type RosterRow = {
   sessionId: string;
   displayName: string;
@@ -70,8 +78,15 @@ export type DashboardProtocolErrorItem = {
 export class DashboardStore {
   readonly roster = new Map<string, RosterRow>();
   activeSpaceId: string | null = null;
-  /** `null` → default human→orchestrator (omit `to`); otherwise direct `to` session. */
+  /** Slug for the active space (URL / space-summary); default join uses `"default"`. */
+  currentSpaceSlug = "default";
+  /** Cached list from `GET /oversight/spaces` for the space picker. */
+  spacesList: SpaceListRow[] = [];
+  /** Set when relay notifies this tab that the current space was destroyed (WS will drop). */
+  spaceDestroyedSlug: string | null = null;
+  /** `null` -> default human->orchestrator (omit `to`); otherwise direct `to` session. */
   sendTargetSessionId: string | null = null;
+  selfSessionId: string | null = null;
   transcriptLines: TranscriptLine[] = [];
   errors: DashboardProtocolErrorItem[] = [];
   private readonly listeners = new Set<() => void>();
@@ -108,6 +123,25 @@ export class DashboardStore {
     this.transcriptLines = [];
     this.activeSpaceId = id;
     this.sendTargetSessionId = null;
+    this.spaceDestroyedSlug = null;
+    this.notify();
+  }
+
+  setSpacesList(rows: SpaceListRow[]): void {
+    this.spacesList = rows;
+    this.notify();
+  }
+
+  setCurrentSpaceSlug(slug: string): void {
+    if (this.currentSpaceSlug === slug) {
+      return;
+    }
+    this.currentSpaceSlug = slug;
+    this.notify();
+  }
+
+  noteSpaceDestroyed(slug: string): void {
+    this.spaceDestroyedSlug = slug;
     this.notify();
   }
 
@@ -134,6 +168,13 @@ export class DashboardStore {
       this.sendTargetSessionId = sessionId;
     }
     this.notify();
+  }
+
+  /** True when the dashboard viewer (self) is the space owner. */
+  get selfIsOwner(): boolean {
+    if (this.selfSessionId === null) return false;
+    const row = this.roster.get(this.selfSessionId);
+    return row !== undefined && row.owner === true;
   }
 
   /** Default orchestrator path blocked when no roster row is marked orchestrator (D-05). */
@@ -261,7 +302,7 @@ export class DashboardStore {
     if (!row) {
       row = {
         sessionId: targetSessionId,
-        displayName: `${targetSessionId.slice(0, 8)}…`,
+        displayName: `${targetSessionId.slice(0, 8)}...`,
         isHuman: false,
         runtime: "",
         workspaceLabel: "",
@@ -323,9 +364,9 @@ export class DashboardStore {
 
   hydrateFromSpaceSummary(
     summary: OversightSpaceSummary,
-    _selfSessionId: string,
+    selfSessionId: string,
   ): void {
-    /* _selfSessionId reserved for future “self” row styling (09-03+). */
+    this.selfSessionId = selfSessionId;
     if (this.metadataUiDebounceTimer !== null) {
       clearTimeout(this.metadataUiDebounceTimer);
       this.metadataUiDebounceTimer = null;

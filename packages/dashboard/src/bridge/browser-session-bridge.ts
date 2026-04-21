@@ -22,12 +22,14 @@ import {
   orchestratorDesignatedWireSchema,
   protocolErrorWireSchema,
   sessionRegisteredWireSchema,
+  spaceDestroyedWireSchema,
   spaceJoinedWireSchema,
   transcriptCatchupMessageSchema,
   type CollaborationMetadataWire,
   type MembershipRemovedWire,
   type OrchestratorRosterWire,
   type ProtocolErrorWire,
+  type SpaceDestroyedWire,
 } from "./wire-schemas.js";
 
 const DEFAULT_URL = "ws://127.0.0.1:18765";
@@ -97,6 +99,9 @@ export class BrowserSessionBridge {
   >();
   private readonly membershipRemovedListeners = new Set<
     (m: MembershipRemovedWire) => void
+  >();
+  private readonly spaceDestroyedListeners = new Set<
+    (m: SpaceDestroyedWire) => void
   >();
   private pendingJoin:
     | {
@@ -226,6 +231,13 @@ export class BrowserSessionBridge {
     this.membershipRemovedListeners.add(cb);
     return () => {
       this.membershipRemovedListeners.delete(cb);
+    };
+  }
+
+  onSpaceDestroyedWire(cb: (m: SpaceDestroyedWire) => void): () => void {
+    this.spaceDestroyedListeners.add(cb);
+    return () => {
+      this.spaceDestroyedListeners.delete(cb);
     };
   }
 
@@ -730,6 +742,18 @@ export class BrowserSessionBridge {
       return;
     }
 
+    const spaceDestroyed = spaceDestroyedWireSchema.safeParse(parsed);
+    if (spaceDestroyed.success) {
+      for (const cb of this.spaceDestroyedListeners) {
+        try {
+          cb(spaceDestroyed.data);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
+
     const env = safeParseEnvelope(parsed);
     if (env.success) {
       for (const h of this.envelopeHandlers) {
@@ -857,6 +881,35 @@ export class BrowserSessionBridge {
         }),
       );
     });
+  }
+
+  sendSpaceDestroy(args: {
+    spaceId: string;
+    slug: string;
+    idempotencyKey: string;
+  }): void {
+    if (this.negotiatedVersion === null || this.registeredSessionId === null) {
+      throw new Error("sendSpaceDestroy: not_ready");
+    }
+    const ws = this.socket;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error("sendSpaceDestroy: socket_not_open");
+    }
+    const envelope: Envelope = {
+      version: this.negotiatedVersion,
+      id: crypto.randomUUID(),
+      sessionId: this.registeredSessionId,
+      kind: "control",
+      type: "space.destroy",
+      payload: { slug: args.slug },
+      idempotencyKey: args.idempotencyKey,
+      spaceId: args.spaceId,
+    };
+    const parsed = safeParseEnvelope(envelope);
+    if (!parsed.success) {
+      throw new Error("sendSpaceDestroy: invalid envelope");
+    }
+    ws.send(JSON.stringify(envelope));
   }
 
   sendMembershipRemove(args: {

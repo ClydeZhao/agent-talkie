@@ -24,6 +24,13 @@ export const spaceJoinedWireSchema = z.object({
   spaceId: z.string(),
 });
 
+export const spaceDestroyedWireSchema = z.object({
+  type: z.literal("space.destroyed"),
+  slug: z.string(),
+});
+
+export type SpaceDestroyedWire = z.infer<typeof spaceDestroyedWireSchema>;
+
 export const membershipRemovedWireSchema = z.object({
   type: z.literal("membership.removed"),
   spaceId: z.string(),
