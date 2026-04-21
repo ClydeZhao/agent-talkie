@@ -27,7 +27,7 @@
 - [x] **Phase 8: Dashboard distribution & CLI entry** — Same-origin static assets, `talkie dashboard`
 - [x] **Phase 9: Core oversight UI** — Roster, transcript tail, metadata chips, relay errors (completed 2026-04-17)
 - [x] **Phase 10: Interactive human controls** — Send, orchestrator designate/clear, idempotent retries
-- [ ] **Phase 11: Space & membership management** — Create/destroy spaces, invite/remove, space picker
+- [x] **Phase 11: Space & membership management** — Create/destroy spaces, invite/remove, space picker
 - [ ] **Phase 12: Discovery, topology & attention** — Search/filter transcript, topology graph, attention lane
 
 ## Phase Details
@@ -106,13 +106,13 @@ Plans:
   1. User can create a new collaboration space and destroy a space per relay rules, with clear confirmation and outcomes.
   2. User can invite sessions into the current space and remove sessions with policy-consistent success or error feedback.
   3. User can list spaces and switch the dashboard context via a space picker (session rebind or navigation as designed) without restarting the relay.
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 **UI hint**: yes
 
 Plans:
 - [x] 11-01-PLAN.md — Relay `space.destroy`：`handleSpaceDestroy`、调度、`space.destroyed`、SessionRegistry 踢线、Vitest（MGMT-01 服务端）
 - [x] 11-02-PLAN.md — Relay `membership.remove` + 仪表盘 `sendMembershipRemove`、名册 Owner-only Remove、MGMT-02 invite N/A 注释（MGMT-02）
-- [ ] 11-03-PLAN.md — `listOversightSpaces` + `GET /oversight/spaces`、`talkie-space-picker`、`?space=`/`default`、`sendSpaceDestroy` 与创建 join（MGMT-01 UI + MGMT-03）
+- [x] 11-03-PLAN.md — `listOversightSpaces` + `GET /oversight/spaces`、`talkie-space-picker`、`?space=`/`default`、`sendSpaceDestroy` 与创建 join（MGMT-01 UI + MGMT-03）
 
 ### Phase 12: Discovery, topology & attention
 **Goal:** Dense operator console: find messages quickly, visualize conversation mesh, surface stalled work.
@@ -144,7 +144,7 @@ Plans:
 | 8. Dashboard distribution & CLI entry | v2.0 | 3/3 | Complete | 2026-04-17 |
 | 9. Core oversight UI | v2.0 | 4/4 | Complete   | 2026-04-17 |
 | 10. Interactive human controls | v2.0 | 3/3 | Complete | 2026-04-20 |
-| 11. Space & membership management | v2.0 | 2/3 | In progress | - |
+| 11. Space & membership management | v2.0 | 3/3 | Complete   | 2026-04-21 |
 | 12. Discovery, topology & attention | v2.0 | 0/3 | Not started | - |
 
 ---
