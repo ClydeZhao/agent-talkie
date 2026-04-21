@@ -274,22 +274,19 @@ export function deleteSpaceById(db: Database.Database, spaceId: string): void {
 | A2 | `membership.remove` 不允许移除 owner 自身；若允许需新错误码 | Architecture | 误踢 owner 导致空间无主 |
 | A3 | 列表 API 仅返回 `active` 空间 | Pitfall 4 | UI 展示幽灵空间 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`space.destroy` 成功后是否发送类似 `space.destroyed` 的 wire 消息以便当前 tab 清空 UI？**
    - What we know: `space.join` 有 `space.joined`。[VERIFIED: `server.ts`]
-   - What's unclear: 销毁后 sender 连接是否关闭、是否需客户端 redirect。
-   - Recommendation: PLAN 中二选一写死（例如发送 `space.destroyed` + 关闭所有成员连接，或仅 `protocol.error`/`ok` JSON）。
+   - RESOLVED: 发送 `space.destroyed` JSON 帧给 sender，然后关闭所有空间成员连接。PLAN 11-01 Task 1 已写死此行为。
 
 2. **`GET /oversight/spaces` 排序与分页？**
    - What we know: 「轻量查询」、字段已列。[CITED: `11-CONTEXT.md` D-09]
-   - What's unclear: 空间数量极大时的上限（localhost 通常小）。
-   - Recommendation: v2.0 可按 `slug` 排序、无分页；文档注明。
+   - RESOLVED: v2.0 按 `slug` 升序排列，无分页。localhost 场景空间数量有限，无需分页。PLAN 11-03 Task 1 已采纳。
 
 3. **MGMT-02 验收文案是否显式写「Invite：N/A（运行时自行 join）」？**
    - What we know: REQUIREMENTS 仍写 invite/remove。[VERIFIED: `REQUIREMENTS.md`]
-   - What's unclear: UAT 是否必须演示 invite。
-   - Recommendation: PLAN/VERIFY 与 REQUIREMENTS 追溯表同步一句，避免审查缺口。
+   - RESOLVED: PLAN 11-02 Task 2 中以 `main.ts` 注释标明 invite N/A（CONTEXT D-06: 运行时 session 自行 join，dashboard 无法获知外部 session ID）。REQUIREMENTS.md 中 MGMT-02 保留原文但验收时以 remove-only 为准。
 
 ## Environment Availability
 
