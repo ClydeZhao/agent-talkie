@@ -28,8 +28,10 @@ import { handleCollaborationControl } from "./collaboration-handlers.js";
 import { routeEnvelope } from "./router.js";
 import { SessionRegistry } from "./session-registry.js";
 import {
+  handleSpaceDestroy,
   handleSpaceJoin,
   handleSpaceLeave,
+  isSpaceDestroyEnvelope,
   isSpaceJoinEnvelope,
   isSpaceLeaveEnvelope,
   pruneExpiredArchivedSpaces,
@@ -137,6 +139,44 @@ export function dispatchValidatedEnvelope(
       type: "space.left",
       spaceId: out.spaceId,
     });
+    return;
+  }
+
+  if (isSpaceDestroyEnvelope(envelope)) {
+    const idempotencyKey = envelope.idempotencyKey;
+    if (!idempotencyKey) {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const slug = envelope.payload.slug;
+    if (typeof slug !== "string") {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const out = handleSpaceDestroy(ctx.db, {
+      sessionId: ctx.boundSessionId,
+      idempotencyKey,
+      slugRaw: slug,
+      nowMs: Date.now(),
+    });
+    if (out.kind === "error") {
+      sendJson(ctx.ws, { type: "protocol.error", error: out.error });
+      if (out.closeConnection) {
+        ctx.ws.close();
+      }
+      return;
+    }
+    sendJson(ctx.ws, {
+      type: "space.destroyed",
+      slug: out.slug,
+    });
+    for (const sid of out.closeSessionIds) {
+      const s = ctx.registry.get(sid);
+      if (s) {
+        s.close();
+      }
+    }
+    ctx.ws.close();
     return;
   }
 
