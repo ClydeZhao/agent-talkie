@@ -16,6 +16,7 @@ import {
   createSession,
   findActiveMembershipForSession,
   getOversightSpaceSummaryBySlug,
+  listOversightSpaces,
   migrate,
   openDatabase,
 } from "@agent-talkie/persistence";
@@ -391,6 +392,15 @@ export async function createRelayServer(opts: {
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(summary));
+      return;
+    }
+
+    if (
+      req.method === "GET" &&
+      url.pathname === "/__agent-talkie/v1/oversight/spaces"
+    ) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(listOversightSpaces(db)));
       return;
     }
 

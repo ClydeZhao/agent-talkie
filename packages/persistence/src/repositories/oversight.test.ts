@@ -6,11 +6,14 @@ import { createSession } from "./sessions.js";
 import {
   getOversightSpaceSummaryBySlug,
   listOversightBlockedSessionsBySlug,
+  listOversightSpaces,
   listOversightTranscriptTailBySlug,
 } from "./oversight.js";
 import {
   insertMembership,
   insertSpaceWithSlug,
+  markMembershipLeft,
+  setSpaceArchived,
 } from "./spaces.js";
 import { appendTranscriptEntry } from "./transcript.js";
 
@@ -143,5 +146,62 @@ describe("oversight repository", () => {
     expect(blocked).toHaveLength(1);
     expect(blocked[0]!.sessionId).toBe(blockedSession);
     expect(blocked[0]!.blockedReason).toBe("waiting on API");
+  });
+
+  it("listOversightSpaces returns active spaces sorted by slug with correct member counts", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const now = 1_700_000_000_000;
+
+    const { id: sAlpha1 } = createSession(db, {
+      displayName: "A1",
+      runtime: "r",
+      workspaceLabel: "w",
+      isHuman: true,
+    });
+    const { id: sAlpha2 } = createSession(db, {
+      displayName: "A2",
+      runtime: "r",
+      workspaceLabel: "w",
+    });
+    const { id: sBeta } = createSession(db, {
+      displayName: "B1",
+      runtime: "r",
+      workspaceLabel: "w",
+    });
+    const { id: sGamma } = createSession(db, {
+      displayName: "Gone",
+      runtime: "r",
+      workspaceLabel: "w",
+    });
+
+    const { id: idBeta } = insertSpaceWithSlug(db, {
+      slug: "beta",
+      nowMs: now,
+    });
+    const { id: idAlpha } = insertSpaceWithSlug(db, {
+      slug: "alpha",
+      nowMs: now,
+    });
+    const { id: idArchived } = insertSpaceWithSlug(db, {
+      slug: "z-archived",
+      nowMs: now,
+    });
+
+    insertMembership(db, { spaceId: idAlpha, sessionId: sAlpha1, nowMs: now });
+    insertMembership(db, { spaceId: idAlpha, sessionId: sAlpha2, nowMs: now });
+    insertMembership(db, { spaceId: idBeta, sessionId: sBeta, nowMs: now });
+    insertMembership(db, { spaceId: idBeta, sessionId: sGamma, nowMs: now });
+    markMembershipLeft(db, idBeta, sGamma, now + 1);
+
+    setSpaceArchived(db, idArchived, now + 2);
+
+    const list = listOversightSpaces(db);
+    expect(list).toHaveLength(2);
+    expect(list[0]!.slug).toBe("alpha");
+    expect(list[0]!.memberCount).toBe(2);
+    expect(list[1]!.slug).toBe("beta");
+    expect(list[1]!.memberCount).toBe(1);
+    expect(list.some((r) => r.slug === "z-archived")).toBe(false);
   });
 });

@@ -23,6 +23,45 @@ export type OversightSpaceSummary = {
   members: OversightMember[];
 };
 
+/** Row for `GET /oversight/spaces` (active spaces only; see {@link listOversightSpaces}). */
+export type OversightSpaceListRow = {
+  slug: string;
+  memberCount: number;
+  ownerSessionId: string | null;
+  orchestratorSessionId: string | null;
+};
+
+/**
+ * Lists active spaces with member counts (`left_at IS NULL`) and oversight ids.
+ * Excludes archived/expired rows. Sorted by `slug` ascending.
+ */
+export function listOversightSpaces(db: Database.Database): OversightSpaceListRow[] {
+  const rows = db
+    .prepare(
+      `SELECT s.id AS space_id,
+              s.slug AS slug,
+              s.orchestrator_session_id AS orchestrator_session_id,
+              (SELECT COUNT(*) FROM space_memberships m
+               WHERE m.space_id = s.id AND m.left_at IS NULL) AS member_count
+       FROM spaces s
+       WHERE s.status = 'active'
+       ORDER BY s.slug ASC`,
+    )
+    .all() as Array<{
+      space_id: string;
+      slug: string;
+      orchestrator_session_id: string | null;
+      member_count: number;
+    }>;
+
+  return rows.map((r) => ({
+    slug: r.slug,
+    memberCount: Number(r.member_count),
+    ownerSessionId: getSpaceOwnerSessionId(db, r.space_id),
+    orchestratorSessionId: r.orchestrator_session_id,
+  }));
+}
+
 export function getOversightSpaceSummaryBySlug(
   db: Database.Database,
   slug: string,

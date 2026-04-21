@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  createSession,
+  insertMembership,
+  insertSpaceWithSlug,
+  migrate,
+  openDatabase,
+} from "@agent-talkie/persistence";
 import { describe, expect, it } from "vitest";
 import { v7 as uuidv7 } from "uuid";
 import WebSocket from "ws";
@@ -434,6 +441,48 @@ describe("createRelayServer", () => {
       expect(summary.members?.[0]?.displayName).toBe("HTTPMember");
       expect(summary.members?.[0]?.runtime).toBe("vitest");
       expect(summary.members?.[0]?.workspaceLabel).toBe("relay-test");
+      await srv.close();
+    });
+
+    it("GET oversight/spaces returns 200 JSON array sorted by slug", async () => {
+      const dbPath = testDbPath();
+      const prep = openDatabase(dbPath);
+      migrate(prep);
+      const now = Date.now();
+      const { id: s1 } = createSession(prep, {
+        displayName: "L",
+        runtime: "r",
+        workspaceLabel: "w",
+      });
+      insertSpaceWithSlug(prep, { slug: "zebra", nowMs: now });
+      const { id: spaceA } = insertSpaceWithSlug(prep, {
+        slug: "alpha",
+        nowMs: now,
+      });
+      insertMembership(prep, {
+        spaceId: spaceA,
+        sessionId: s1,
+        nowMs: now,
+      });
+      prep.close();
+
+      const srv = await createRelayServer({ dbPath, port: 0 });
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/oversight/spaces`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("application/json");
+      const body = (await res.json()) as Array<{
+        slug: string;
+        memberCount: number;
+      }>;
+      expect(Array.isArray(body)).toBe(true);
+      expect(body.length).toBe(2);
+      expect(body[0]!.slug).toBe("alpha");
+      expect(body[0]!.memberCount).toBe(1);
+      expect(body[1]!.slug).toBe("zebra");
+      expect(body[1]!.memberCount).toBe(0);
       await srv.close();
     });
   });

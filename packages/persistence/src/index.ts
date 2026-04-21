@@ -48,8 +48,10 @@ export {
 export {
   getOversightSpaceSummaryBySlug,
   listOversightBlockedSessionsBySlug,
+  listOversightSpaces,
   listOversightTranscriptTailBySlug,
   type OversightBlockedSession,
   type OversightMember,
+  type OversightSpaceListRow,
   type OversightSpaceSummary,
 } from "./repositories/oversight.js";
