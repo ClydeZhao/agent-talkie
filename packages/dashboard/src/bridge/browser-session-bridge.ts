@@ -133,6 +133,8 @@ export class BrowserSessionBridge {
   private _userRequestedClose = false;
   private _autoReconnectEnabled = false;
   private _joinSucceededAtLeastOnce = false;
+  /** Last slug successfully joined in this tab; reconnect uses it instead of a hardcoded default. */
+  private _lastJoinedSlug: string | null = null;
   private _reconnectAttemptIndex = 0;
   private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private lastRetryableEnvelope: Envelope | null = null;
@@ -434,7 +436,7 @@ export class BrowserSessionBridge {
         });
       }
       await this.joinSpace({
-        slug: "dashboard",
+        slug: this._lastJoinedSlug ?? "default",
         idempotencyKey: crypto.randomUUID(),
       });
       this._reconnectAttemptIndex = 0;
@@ -647,6 +649,7 @@ export class BrowserSessionBridge {
           if (parsedJoin.success) {
             this.pendingJoin = undefined;
             this._joinSucceededAtLeastOnce = true;
+            this._lastJoinedSlug = pj.slug;
             this.setHealth("connected");
             pj.resolve({
               spaceId: parsedJoin.data.spaceId,

@@ -1,5 +1,4 @@
 // MGMT-02 invite: N/A for localhost v2.0 per phase 11 CONTEXT D-06; sessions join via adapter/CLI.
-const DEMO_SPACE_SLUG = "dashboard";
 
 import {
   orchestratorClearPayloadSchema,
@@ -21,6 +20,7 @@ import {
   type OversightSpaceSummary,
 } from "../store/dashboard-store.js";
 import "../shell/connection-shell.js";
+import "../shell/talkie-space-picker.js";
 import "../shell/talkie-send-bar.js";
 
 void (async () => {
@@ -28,8 +28,19 @@ void (async () => {
     ? "ws://127.0.0.1:18765"
     : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
   const bridge = new BrowserSessionBridge({ url: wsUrl });
+
+  const headerRow = document.createElement("div");
+  headerRow.classList.add("talkie-app__header");
+  headerRow.style.display = "flex";
+  headerRow.style.alignItems = "center";
+  headerRow.style.gap = "16px";
+  headerRow.style.flexWrap = "wrap";
+
+  const picker = document.createElement("talkie-space-picker");
   const shell = document.createElement("talkie-connection-shell");
-  shell.classList.add("talkie-app__header");
+  headerRow.appendChild(picker);
+  headerRow.appendChild(shell);
+
   const app = document.getElementById("app");
   if (!app) {
     throw new Error("Missing #app mount element");
@@ -122,14 +133,26 @@ void (async () => {
   bodyRow.appendChild(roster);
   bodyRow.appendChild(mainPanel);
 
-  app.appendChild(shell);
+  app.appendChild(headerRow);
   app.appendChild(errorBar);
   app.appendChild(bodyRow);
+
+  const httpOrigin = deriveHttpOriginFromWsUrl(wsUrl);
+  picker.httpOrigin = httpOrigin;
+  picker.bridge = bridge;
+  picker.store = store;
+
+  const initialSlug = (() => {
+    const q = new URLSearchParams(location.search).get("space");
+    return q && q.length > 0 ? q : "default";
+  })();
 
   store.addListener(() => {
     roster.entries = Array.from(store.roster.values());
     roster.selfIsOwner = store.selfIsOwner;
     roster.selfSessionId = store.selfSessionId ?? "";
+    picker.currentSlug = store.currentSpaceSlug;
+    picker.selfIsOwner = store.selfIsOwner;
   });
 
   bridge.onProtocolError((w) => {
@@ -173,6 +196,14 @@ void (async () => {
     }
   });
 
+  bridge.onSpaceDestroyedWire((msg) => {
+    store.noteSpaceDestroyed(msg.slug);
+  });
+
+  picker.addEventListener("talkie-space-refresh", () => {
+    void pullSpaceSummary();
+  });
+
   bridge.onConnectionHealthChange((s) => {
     shell.healthState = s;
   });
@@ -186,7 +217,6 @@ void (async () => {
     sessionStorage.setItem(RELAY_GENERATION_KEY, gen);
   }
 
-  const httpOrigin = deriveHttpOriginFromWsUrl(wsUrl);
   if (
     gen !== null &&
     (await probeRelayGenerationHealth(httpOrigin, gen)) === false
@@ -214,15 +244,18 @@ void (async () => {
     } else {
       selfSessionId = resumed.sessionId;
     }
+    store.setCurrentSpaceSlug(initialSlug);
     const joined = await bridge.joinSpace({
-      slug: DEMO_SPACE_SLUG,
+      slug: initialSlug,
       idempotencyKey: crypto.randomUUID(),
     });
     store.setActiveSpaceId(joined.spaceId);
+    store.setCurrentSpaceSlug(joined.slug);
 
     pullSpaceSummary = async (): Promise<void> => {
+      const slug = store.currentSpaceSlug;
       const res = await fetch(
-        `${httpOrigin}/__agent-talkie/v1/oversight/space-summary?slug=${encodeURIComponent(DEMO_SPACE_SLUG)}`,
+        `${httpOrigin}/__agent-talkie/v1/oversight/space-summary?slug=${encodeURIComponent(slug)}`,
       );
       if (res.status === 200) {
         const summary = (await res.json()) as OversightSpaceSummary;

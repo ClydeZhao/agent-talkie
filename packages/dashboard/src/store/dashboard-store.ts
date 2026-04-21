@@ -367,6 +367,7 @@ export class DashboardStore {
     selfSessionId: string,
   ): void {
     this.selfSessionId = selfSessionId;
+    this.currentSpaceSlug = summary.slug;
     if (this.metadataUiDebounceTimer !== null) {
       clearTimeout(this.metadataUiDebounceTimer);
       this.metadataUiDebounceTimer = null;
