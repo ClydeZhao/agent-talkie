@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-17)
 
 **Core value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
-**Current focus:** Phase 11 complete (browser-verified); next primary phase work is Phase 12 (discovery / topology / attention)
+**Current focus:** Phase 12 planned (2 plans: 12-01 search/index + 12-02 UI/attention; OVER-05 descoped)
 
 ## Current Position
 
-Phase: 11-space-membership-management
-Plan: 11-03 complete + post-execution bugfix (destroy tombstone + broadcast + client handler)
-Status: Phase 11 complete and browser-verified; advancing toward Phase 12
-Last activity: 2026-04-21 -- Server-side destroy tombstone (60s TTL) prevents any client from re-creating a destroyed slug via space.join; space.destroyed broadcast to all members + ctx.ws; client handles space_recently_destroyed by stopping reconnect; Playwright 13/13 pass (MGMT-01 roster, MGMT-03 create/destroy/API-404/tombstone-rejoin/10s-hold/tab-state)
+Phase: 12-discovery-topology-attention
+Plan: 12-01-PLAN.md + 12-02-PLAN.md created (execute-phase pending)
+Status: Phase 12 planned — OVER-03/06; OVER-05 已自本階段移除
+Last activity: 2026-04-22 -- Phase 12 雙計畫：MiniSearch+篩選+可見行（12-01）；搜尋面板+Needs Attention 名册（12-02）；ROADMAP/REQUIREMENTS 與 12-CONTEXT 對齊
 
 ## Accumulated Context
 

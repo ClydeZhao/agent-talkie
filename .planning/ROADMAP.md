@@ -28,7 +28,7 @@
 - [x] **Phase 9: Core oversight UI** — Roster, transcript tail, metadata chips, relay errors (completed 2026-04-17)
 - [x] **Phase 10: Interactive human controls** — Send, orchestrator designate/clear, idempotent retries
 - [x] **Phase 11: Space & membership management** — Create/destroy spaces, invite/remove, space picker
-- [ ] **Phase 12: Discovery, topology & attention** — Search/filter transcript, topology graph, attention lane
+- [ ] **Phase 12: Discovery & attention** — Transcript search/filter (client index), attention lane (拓扑图 OVER-05 已延後)
 
 ## Phase Details
 
@@ -114,21 +114,19 @@ Plans:
 - [x] 11-02-PLAN.md — Relay `membership.remove` + 仪表盘 `sendMembershipRemove`、名册 Owner-only Remove、MGMT-02 invite N/A 注释（MGMT-02）
 - [x] 11-03-PLAN.md — `listOversightSpaces` + `GET /oversight/spaces`、`talkie-space-picker`、`?space=`/`default`、`sendSpaceDestroy` 与创建 join（MGMT-01 UI + MGMT-03）
 
-### Phase 12: Discovery, topology & attention
-**Goal:** Dense operator console: find messages quickly, visualize conversation mesh, surface stalled work.
+### Phase 12: Discovery & attention
+**Goal:** Dense operator console: find messages quickly in the loaded transcript window, and surface blocked sessions in a dedicated attention lane. (Session topology graph **OVER-05** is descoped from v2.0 Phase 12 per [12-CONTEXT.md](.planning/phases/12-discovery-topology-attention/12-CONTEXT.md).)
 **Depends on:** Phase 11
-**Requirements:** OVER-03, OVER-05, OVER-06
+**Requirements:** OVER-03, OVER-06
 **Success Criteria** (what must be TRUE):
-  1. User can search and filter the transcript by sender, message kind, and time window within the loaded or batched history window.
-  2. User sees a live topology graph that reflects message flow relationships (for example hub vs direct edges) as the session evolves.
-  3. User sees a blocked or attention lane that highlights sessions needing human attention, consistent with collaboration metadata and relay signals.
-**Plans**: TBD (target 3 plans: client index + filters; Cytoscape graph; attention lane)
+  1. User can search and filter the transcript by sender, message kind, and time window within the loaded history (client-side index).
+  2. User sees a blocked / attention lane that highlights sessions needing human attention, consistent with collaboration metadata (`progress === "blocked"`).
+**Plans:** 2 plans (not started)
 **UI hint**: yes
 
 Plans:
-- [ ] 12-01: Transcript discovery — client index (e.g. MiniSearch), filters, virtualized results
-- [ ] 12-02: Topology — graph model from envelopes + roles, Cytoscape layout updates from live events
-- [ ] 12-03: Attention lane — stalled/blocked surfacing, alignment with metadata and possibly-blocked style semantics
+- [ ] [12-01-PLAN.md](.planning/phases/12-discovery-topology-attention/12-01-PLAN.md) — MiniSearch 索引、篩選狀態、`getVisibleTranscriptLines`、`TalkieTranscript` 可見行與 `scrollToDedupeKey`（OVER-03 數據層）
+- [ ] [12-02-PLAN.md](.planning/phases/12-discovery-topology-attention/12-02-PLAN.md) — 右欄搜尋面板、分欄、名册 **Needs Attention**（OVER-03 UI + OVER-06）
 
 ## Progress
 
@@ -145,7 +143,7 @@ Plans:
 | 9. Core oversight UI | v2.0 | 4/4 | Complete   | 2026-04-17 |
 | 10. Interactive human controls | v2.0 | 3/3 | Complete | 2026-04-20 |
 | 11. Space & membership management | v2.0 | 3/3 | Complete   | 2026-04-21 |
-| 12. Discovery, topology & attention | v2.0 | 0/3 | Not started | - |
+| 12. Discovery & attention | v2.0 | 0/2 | Not started | - |
 
 ---
 *Full v1.0 phase details archived to `.planning/milestones/v1.0-ROADMAP.md`*
