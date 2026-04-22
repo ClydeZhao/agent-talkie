@@ -71,7 +71,7 @@ export class TalkieTranscript extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    this._prevLen = this.store.transcriptLines.length;
+    this._prevLen = this.store.getVisibleTranscriptLines().length;
     this._unsub = this.store.addListener(() => this._onStoreNotify());
   }
 
@@ -82,7 +82,7 @@ export class TalkieTranscript extends LitElement {
   }
 
   private _onStoreNotify(): void {
-    const len = this.store.transcriptLines.length;
+    const len = this.store.getVisibleTranscriptLines().length;
     const delta = len - this._prevLen;
     if (delta > 0) {
       if (this._isPinnedToBottom) {
@@ -106,7 +106,7 @@ export class TalkieTranscript extends LitElement {
       const v = this.renderRoot.querySelector(
         "lit-virtualizer",
       ) as LitVirtualizer | null;
-      const n = this.store.transcriptLines.length;
+      const n = this.store.getVisibleTranscriptLines().length;
       if (v && n > 0) {
         v.scrollToIndex(n - 1, "end");
       }
@@ -134,15 +134,29 @@ export class TalkieTranscript extends LitElement {
     this.requestUpdate();
   }
 
+  scrollToDedupeKey(dedupeKey: string): void {
+    const lines = this.store.getVisibleTranscriptLines();
+    const index = lines.findIndex((l) => l.dedupeKey === dedupeKey);
+    if (index < 0) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const v = this.renderRoot.querySelector(
+        "lit-virtualizer",
+      ) as LitVirtualizer | null;
+      v?.scrollToIndex(index, "end");
+      this.requestUpdate();
+    });
+  }
+
   render() {
-    const lines = this.store.transcriptLines;
     const showNew = this.pendingNew > 0 && !this._isPinnedToBottom;
 
     return html`
       <div class="head">Transcript</div>
       <lit-virtualizer
         scroller
-        .items=${lines}
+        .items=${this.store.getVisibleTranscriptLines()}
         .renderItem=${this._renderItem}
         .keyFunction=${this._keyFn}
         @scroll=${this._onScroll}

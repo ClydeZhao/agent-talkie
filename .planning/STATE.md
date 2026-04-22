@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Web Dashboard
 status: executing
-last_updated: "2026-04-21T16:15:00.000Z"
-last_activity: 2026-04-21 -- Phase 11 destroy-current-space tombstone fix; prevents slug re-creation by any client after destroy
+last_updated: "2026-04-22T14:45:00.000Z"
+last_activity: 2026-04-22 -- Completed plan 12-01 (MiniSearch + visible transcript)
 progress:
   total_phases: 6
   completed_phases: 5
-  total_plans: 16
-  completed_plans: 15
-  percent: 94
+  total_plans: 18
+  completed_plans: 17
+  percent: 90
 ---
 
 ## Project Reference
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-17)
 
 **Core value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
-**Current focus:** Phase 12 planned (2 plans: 12-01 search/index + 12-02 UI/attention; OVER-05 descoped)
+**Current focus:** Phase 12 executing (12-01 done; 12-02 UI/attention; OVER-05 descoped)
 
 ## Current Position
 
 Phase: 12-discovery-topology-attention
-Plan: 12-01-PLAN.md + 12-02-PLAN.md created (execute-phase pending)
-Status: Phase 12 planned — OVER-03/06; OVER-05 已自本階段移除
-Last activity: 2026-04-22 -- Phase 12 雙計畫：MiniSearch+篩選+可見行（12-01）；搜尋面板+Needs Attention 名册（12-02）；ROADMAP/REQUIREMENTS 與 12-CONTEXT 對齊
+Plan: 12-02-PLAN.md (next) — 12-01-PLAN executed
+Status: Executing
+Last activity: 2026-04-22 -- Completed 12-01 (MiniSearch, filters, visible lines, scrollToDedupeKey)
 
 ## Accumulated Context
 

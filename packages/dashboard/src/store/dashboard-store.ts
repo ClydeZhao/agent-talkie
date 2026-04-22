@@ -11,6 +11,10 @@ import type {
   ProtocolErrorWire,
 } from "../bridge/wire-schemas.js";
 import { getRelayErrorCopy } from "../errors/relay-error-copy.js";
+import {
+  buildTranscriptSearchDoc,
+  createTranscriptMiniSearch,
+} from "../search/transcript-search-index.js";
 
 /** Coalesces rapid `metadata.patch` UI updates (OVER-04 / D-17). */
 export const METADATA_UI_DEBOUNCE_MS = 200;
@@ -65,6 +69,11 @@ export type TranscriptLine = {
   envelope: Envelope;
 };
 
+export type TranscriptTimeFilter =
+  | { kind: "all" }
+  | { kind: "preset"; preset: "5m" | "30m" }
+  | { kind: "custom"; startMs: number; endMs: number };
+
 export type DashboardProtocolErrorItem = {
   id: string;
   code: string;
@@ -88,10 +97,17 @@ export class DashboardStore {
   sendTargetSessionId: string | null = null;
   selfSessionId: string | null = null;
   transcriptLines: TranscriptLine[] = [];
+  /** Client-side full-text query over loaded lines (AND with filters). */
+  transcriptSearchQuery = "";
+  /** `null` = any sender. */
+  transcriptFilterSenderSessionId: string | null = null;
+  transcriptFilterKind: "all" | "control" | "conversation" = "all";
+  transcriptTimeFilter: TranscriptTimeFilter = { kind: "all" };
   errors: DashboardProtocolErrorItem[] = [];
   private readonly listeners = new Set<() => void>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private transcriptDedupe = new Set<string>();
+  private readonly transcriptSearchIndex = createTranscriptMiniSearch();
   private metadataUiDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly errorDismissTimers = new Map<
     string,
@@ -115,12 +131,99 @@ export class DashboardStore {
     }
   }
 
+  setTranscriptSearchQuery(q: string): void {
+    if (this.transcriptSearchQuery === q) {
+      return;
+    }
+    this.transcriptSearchQuery = q;
+    this.notify();
+  }
+
+  setTranscriptFilters(updates: {
+    sender?: string | null;
+    kind?: "all" | "control" | "conversation";
+    time?: TranscriptTimeFilter;
+  }): void {
+    let changed = false;
+    if (updates.sender !== undefined) {
+      if (this.transcriptFilterSenderSessionId !== updates.sender) {
+        this.transcriptFilterSenderSessionId = updates.sender;
+        changed = true;
+      }
+    }
+    if (updates.kind !== undefined) {
+      if (this.transcriptFilterKind !== updates.kind) {
+        this.transcriptFilterKind = updates.kind;
+        changed = true;
+      }
+    }
+    if (updates.time !== undefined) {
+      this.transcriptTimeFilter = updates.time;
+      changed = true;
+    }
+    if (changed) {
+      this.notify();
+    }
+  }
+
+  getVisibleTranscriptLines(): TranscriptLine[] {
+    const filtered = this.transcriptLines.filter((line) =>
+      this.lineMatchesTranscriptFilters(line),
+    );
+    const q = this.transcriptSearchQuery.trim();
+    if (q === "") {
+      return filtered;
+    }
+    const lineByDedupeKey = new Map(
+      this.transcriptLines.map((l) => [l.dedupeKey, l] as const),
+    );
+    const results = this.transcriptSearchIndex.search(q, {
+      filter: (r) => {
+        const id = r.id;
+        const line = lineByDedupeKey.get(id);
+        return (
+          line !== undefined && this.lineMatchesTranscriptFilters(line)
+        );
+      },
+    });
+    const hitSet = new Set(results.map((r) => r.id));
+    return this.transcriptLines.filter(
+      (line) =>
+        this.lineMatchesTranscriptFilters(line) && hitSet.has(line.dedupeKey),
+    );
+  }
+
+  private lineMatchesTranscriptFilters(line: TranscriptLine): boolean {
+    if (this.transcriptFilterSenderSessionId !== null) {
+      if (line.envelope.sessionId !== this.transcriptFilterSenderSessionId) {
+        return false;
+      }
+    }
+    if (this.transcriptFilterKind !== "all") {
+      if (line.envelope.kind !== this.transcriptFilterKind) {
+        return false;
+      }
+    }
+    const tf = this.transcriptTimeFilter;
+    if (tf.kind === "all") {
+      return true;
+    }
+    if (tf.kind === "custom") {
+      const t = line.receivedAtMs;
+      return t >= tf.startMs && t <= tf.endMs;
+    }
+    const now = Date.now();
+    const windowMs = tf.preset === "5m" ? 5 * 60 * 1000 : 30 * 60 * 1000;
+    return line.receivedAtMs >= now - windowMs;
+  }
+
   setActiveSpaceId(id: string): void {
     if (this.activeSpaceId === id) {
       return;
     }
     this.transcriptDedupe.clear();
     this.transcriptLines = [];
+    this.transcriptSearchIndex.removeAll();
     this.activeSpaceId = id;
     this.sendTargetSessionId = null;
     this.spaceDestroyedSlug = null;
@@ -250,10 +353,13 @@ export class DashboardStore {
     }
     this.transcriptDedupe.add(dedupeKey);
     const receivedAtMs = Date.now();
-    this.transcriptLines = [
-      ...this.transcriptLines,
-      { dedupeKey, receivedAtMs, envelope: parsed.data },
-    ];
+    const line: TranscriptLine = {
+      dedupeKey,
+      receivedAtMs,
+      envelope: parsed.data,
+    };
+    this.transcriptLines = [...this.transcriptLines, line];
+    this.transcriptSearchIndex.add(buildTranscriptSearchDoc(line, this.roster));
     this.notify();
   }
 
@@ -355,10 +461,9 @@ export class DashboardStore {
     }
     this.transcriptDedupe.add(dedupeKey);
     const receivedAtMs = Date.now();
-    this.transcriptLines = [
-      ...this.transcriptLines,
-      { dedupeKey, receivedAtMs, envelope: env },
-    ];
+    const line: TranscriptLine = { dedupeKey, receivedAtMs, envelope: env };
+    this.transcriptLines = [...this.transcriptLines, line];
+    this.transcriptSearchIndex.add(buildTranscriptSearchDoc(line, this.roster));
     this.notify();
   }
 
@@ -430,5 +535,12 @@ export class DashboardStore {
     this.refreshTimer = window.setInterval(() => {
       void fetchSummary();
     }, intervalMs);
+  }
+
+  stopSnapshotRefresh(): void {
+    if (this.refreshTimer !== null) {
+      clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
   }
 }

@@ -19,6 +19,7 @@
     "@agent-talkie/protocol": "0.0.0",
     "@lit-labs/virtualizer": "^2.1.1",
     "lit": "3.3.2",
+    "minisearch": "^7.2.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

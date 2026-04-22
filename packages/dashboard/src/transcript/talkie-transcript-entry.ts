@@ -3,8 +3,7 @@ import { classMap } from "lit/directives/class-map.js";
 import { customElement, property } from "lit/decorators.js";
 
 import type { DashboardStore, TranscriptLine } from "../store/dashboard-store.js";
-
-const PREVIEW_MAX = 240;
+import { previewPayload } from "./payload-preview.js";
 
 function formatHms(ms: number): string {
   const d = new Date(ms);
@@ -12,14 +11,6 @@ function formatHms(ms: number): string {
   const m = String(d.getMinutes()).padStart(2, "0");
   const s = String(d.getSeconds()).padStart(2, "0");
   return `${h}:${m}:${s}`;
-}
-
-function previewPayload(payload: Record<string, unknown>): string {
-  const raw = JSON.stringify(payload);
-  if (raw.length <= PREVIEW_MAX) {
-    return raw;
-  }
-  return `${raw.slice(0, PREVIEW_MAX)}…`;
 }
 
 @customElement("talkie-transcript-entry")
