@@ -42,7 +42,7 @@
 
 - **零預設外部服務**（NATS/Postgres/雲即時庫等）：本階段採**瀏覽器內**索引與現有 store，不新增遠端搜尋服務（與 D-01 一致；伺服端 FTS 已列為未來 DASH-01）。  
 - **儀表板技術棧**：Lit + TypeScript + Vite；**不要**在預設路徑引入 React/Vue 作為主 UI（`PROJECT.md` / 專案慣例）。  
-- 若之後需同步 `ROADMAP.md` / `REQUIREMENTS.md` 的 **OVER-05 敘述與本階段實際範圍**，應在討論/遷移流程中一併修正（避免計畫讀到過期「拓樸/Cytoscape」條目）。  
+- **已對齊：** `ROADMAP.md` 與 `REQUIREMENTS.md` 已將 OVER-05 自 Phase 12 移出；本文件與 12-CONTEXT 以「本階段不含拓樸」為準。  
 
 ## Summary
 
@@ -219,7 +219,7 @@ const hits = ms.search(query, {
 
 | 舊假設 | 本階段實情 | 影響 |
 |--------|------------|------|
-| Phase 12 含拓樸圖（Cytoscape 等） | 使用者已自本階段**移除** OVER-05 | ROADMAP 若仍寫圖，需與 12-CONTEXT 對齊以免誤導實作 |
+| Phase 12 含拓樸圖（Cytoscape 等） | OVER-05 已自 Phase 12 **移出**（ROADMAP/REQUIREMENTS 已更新） | 實作與審查以 12-CONTEXT 為準，不再安排拓樸任務 |
 | 僅以排序突出 blocked | 需獨立「Needs Attention」區塊 | `talkie-roster` 模板與樣式擴展 |
 
 **Deprecated 於本階段：** 圖視覺化、拓樸邊重建——**不納入研究/計畫**。
@@ -233,15 +233,13 @@ const hits = ms.search(query, {
 
 **若 A1/A2 不成立：** 在 discuss-phase 鎖邊界或加 relay 時間戳欄位（後者超出本研究範圍）。
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **ROADMAP / REQUIREMENTS 與 12-CONTEXT 的 OVER-05 敘述不一致**  
-   - 已知：ROADMAP Phase 12 仍列拓樸與 Cytoscape 型計畫；REQUIREMENTS 表仍寫 OVER-05 → Phase 12。  
-   - 不明：是否要在此里程碑**正式**將 OVER-05 挪到未來或改 phase 編號。  
-   - 建議：在進入 12-PLAN 前用 `/gsd-discuss` 或手動補一輪**追溯表**更新，避免審查誤讀。  
+1. **ROADMAP / REQUIREMENTS 與 12-CONTEXT 的 OVER-05 敘述** — **(RESOLVED)**  
+   - **結論：** `ROADMAP.md` 與 `REQUIREMENTS.md` 已更新，將 **OVER-05 自 Phase 12 descope**；Phase 12 僅含 OVER-03、OVER-06 等 12-CONTEXT 所列範圍，**不含**拓樸/Cytoscape。後續實作與文件審查以上述倉庫狀態與 12-CONTEXT 為一致來源。  
 
-2. **篩選開啟時「新訊息」鈴的行為**  
-   - 需產品層面決定（僅在可見行？或全量行？）——屬 D-12 discretion，PLAN 應寫一條驗收。  
+2. **篩選開啟時「新訊息」鈴 / 未讀計數的語意** — **(RESOLVED)**  
+   - **產品結論：** **新訊息指示與計數以「全量新訊息」為準，不因篩選而縮小**；篩選只影響**畫面可見** transcript，屬**檢視層**，不屬於「哪些行算新」的資料層。實作驗收：篩選開啟時若仍有未看過的新行，`pendingNew` / 鈴行為與 12-01 定義之計數邏輯**一致**（不強制在篩選後子集內重算「新」）。若未來產品要「僅在可見行提示」，另開決策，非本階段範圍。  
 
 ## Environment Availability
 
@@ -277,7 +275,7 @@ const hits = ms.search(query, {
 - [VERIFIED: workspace] `packages/protocol/src/envelope.ts` — `kind` / `type` schema  
 
 ### Secondary（MEDIUM）
-- 專案 `ROADMAP.md` Phase 12 條文——**與 12-CONTEXT 範圍可能不一致**；以 **12-CONTEXT 為本階段鎖定決策**。
+- 專案 `ROADMAP.md` / `REQUIREMENTS.md` Phase 12 條文——**已與 OVER-05 descope 對齊**；實作仍以 **12-CONTEXT** 為鎖定決策來源。
 
 ## Metadata
 

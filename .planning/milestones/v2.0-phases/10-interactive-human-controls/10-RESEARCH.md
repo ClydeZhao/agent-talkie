@@ -29,7 +29,7 @@
 **发送反馈与重试**
 
 - **D-09：** 乐观发送：提交后清空输入；成功路径依赖 relay 正常 fan-out/回显进入 transcript；`protocol.error` 走 Phase 9 错误条。
-- **D-10：** 错误条目中提供「重试」，用**同一** `idempotencyKey` 重发同一信封。
+- **D-10：** 错误条目中提供 **Retry** 按钮，用**同一** `idempotencyKey` 重发同一信封。
 - **D-11：** `idempotencyKey` 对用户完全不可见；bridge 每次发送生成 UUID v4，失败时在内存中保留待重试信封并重用语义上的同一 key。
 
 ### Claude 裁量
@@ -48,7 +48,7 @@
 |----|------|----------------------|
 | **CTRL-01** | Dashboard 发消息：默认 human→orchestrator，可选直连 session | `routeEnvelope` 已区分 `conversation` + 无 `to` + `isHuman` → orchestrator；`envelope.to` → 单播。[VERIFIED: `packages/relay/src/router.ts`] 需在 bridge 增加出站 `send`、组信封时带 `spaceId`/`version`/`sessionId`（人类 session）。 |
 | **CTRL-02** | Dashboard 指定/清除 orchestrator | `handleCollaborationControl` 已实现 designate/clear、owner 校验、`orchestrator.designated` / `orchestrator.cleared` ack 与 `collaboration.orchestrator` fan-out。[VERIFIED: `packages/relay/src/collaboration-handlers.ts`] Dashboard **当前未**解析上述非信封 JSON，需 bridge + store 更新以实现「成功后立即」刷新名册。 |
-| **CTRL-03** | 发送幂等、安全重试 | 协议字段 `idempotencyKey` 存在 [VERIFIED: `packages/protocol/src/envelope.ts`]。**对话路径**下 `routeEnvelope` **未**调用 `tryRecordIdempotencyKey`；每次路由仍会 `appendTranscriptEntry` 新行 [VERIFIED: `packages/relay/src/router.ts`、`packages/persistence/src/repositories/transcript.ts`]。满足「transcript 中单一逻辑结果」很可能需要 **relay/persistence 扩展** 或产品层明确接受「仅 UI 按 `envelope.id` 去重、持久化仍可能双行」——见 Open Questions。 |
+| **CTRL-03** | 发送幂等、安全重试 | 协议字段 `idempotencyKey` 存在 [VERIFIED: `packages/protocol/src/envelope.ts`]。**对话路径**下 `routeEnvelope` **未**调用 `tryRecordIdempotencyKey`；每次路由仍会 `appendTranscriptEntry` 新行 [VERIFIED: `packages/relay/src/router.ts`、`packages/persistence/src/repositories/transcript.ts`]。满足「transcript 中单一逻辑结果」很可能需要 **relay/persistence 扩展** 或产品层明确接受「仅 UI 按 `envelope.id` 去重、持久化仍可能双行」——结论见 **Open Questions (RESOLVED) #1** 与 10-03。 |
 </phase_requirements>
 
 ## Summary
@@ -267,19 +267,16 @@ const envelope = {
 | A1 | 仪表盘人类发送采用 `chat.message` / `chat.direct` 与集成测试一致 | Code Examples | 若产品要求与某 adapter 的 type 对齐，需在 PLAN 中显式选 type |
 | A2 | Phase 10 UAT 以「当前单机 relay + 浏览器」为主 | Environment | 远程/wss 非 v2.0 范围 |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **CTRL-03 与 transcript 单一事实来源**  
-   - **已知：** UI 可按 `envelope.id` 去重；持久化 transcript 无 key 去重。  
-   - **未定：** 是否在 Phase 10 内修改 `routeEnvelope`（或 transcript 写入层）实现 `idempotencyKey` 幂等。  
-   - **建议：** 规划会议二选一并写清验收步骤（含重连后 catch-up）。
+   - **RESOLVED：** 采用 **Option A**（与 **10-03-PLAN** 一致）：`conversation` 且带 `idempotencyKey` 时经 SQLite `runConversationIdempotentTranscriptAppend` 在事务内与 `appendTranscriptEntry` 关联；`fresh` / `replay` / `mismatch` 语义与 relay 集成测试见 10-03；验收含重连后 catch-up 与错误条重试同一 key。
 
 2. **`conversation` 的规范 type/payload**  
-   - **已知：** relay 集成测试使用 `chat.message` / `chat.direct` + `payload.text`。  
-   - **建议：** 对照 `adapter-cursor-mcp` / `adapter-codex` 等发送的 `type`，在 PLAN 中写死仪表盘默认 type，避免 orchestrator 侧解析分叉。
+   - **RESOLVED：** 仪表盘采用与 relay 集成测试一致的 **`chat.message`**（默认 human→orchestrator，无 `to`）与 **`chat.direct`**（名册直连，`to` 为目标 `sessionId`），`payload: { text }`；写死在 **10-01-PLAN**「信封字段」表。
 
 3. **直连离线是否要在本阶段修 relay**  
-   - 若产品要求与 `orchestrator_offline` 一致，需新增错误码或行为变更。
+   - **RESOLVED：** **本阶段不修** relay 对「`envelope.to` 目标离线仍 append、无对称 `protocol.error`」的行为；与 **10-01-PLAN** 及 research「直连尽力投递」一致；若将来要对齐 `orchestrator_offline` 式 UX，另起阶段改 `routeEnvelope` 或产品说明。
 
 ## Environment Availability
 
@@ -348,7 +345,7 @@ const envelope = {
 | Standard stack | HIGH | 与 lockfile / 源码一致 |
 | Relay 路由与协作控制 | HIGH | 直接读实现 |
 | 对话幂等与 transcript 唯一性 | MEDIUM — 存在产品与实现差距 | CONTEXT 与 `router` 行为不一致已标出 |
-| conversation payload 约定 | LOW — 需 grep 锁定 | 见 Open Questions |
+| conversation payload 约定 | HIGH（已锁定） | 见 Open Questions (RESOLVED) #2；仪表盘 `chat.message` / `chat.direct` |
 
 **Research date:** 2026-04-20  
 **建议复审：** 30 天内或变更 `router`/信封 schema 后
