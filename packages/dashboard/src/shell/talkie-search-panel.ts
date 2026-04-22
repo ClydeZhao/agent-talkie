@@ -6,6 +6,7 @@ import {
   type TranscriptLine,
   type TranscriptTimeFilter,
 } from "../store/dashboard-store.js";
+import { highlightText } from "../search/highlight-text.js";
 import { previewPayload } from "../transcript/payload-preview.js";
 
 const SEARCH_DEBOUNCE_MS = 500;
@@ -208,6 +209,12 @@ export class TalkieSearchPanel extends LitElement {
       padding: 12px 10px;
       font-size: 12px;
       color: var(--talkie-muted, #8b949e);
+    }
+    mark.search-hit {
+      background: rgba(210, 153, 34, 0.35);
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
     }
   `;
 
@@ -436,6 +443,10 @@ export class TalkieSearchPanel extends LitElement {
     );
   }
 
+  private _highlightText(text: string): ReturnType<typeof html> | string {
+    return highlightText(text, this.store.transcriptSearchQuery);
+  }
+
   private _onResultClick(line: TranscriptLine): void {
     this.dispatchEvent(
       new CustomEvent("talkie-jump-to-dedupe", {
@@ -536,10 +547,10 @@ export class TalkieSearchPanel extends LitElement {
                   >
                     <span class="r-meta"
                       >${formatReceivedTime(line.receivedAtMs)} ·
-                      ${this._senderLabel(line.envelope.sessionId)} ·
-                      ${line.envelope.kind}/${line.envelope.type}</span
+                      ${this._highlightText(this._senderLabel(line.envelope.sessionId))} ·
+                      ${line.envelope.kind}/${this._highlightText(line.envelope.type)}</span
                     >
-                    <span class="r-payload">${this._payloadSummary(line)}</span>
+                    <span class="r-payload">${this._highlightText(this._payloadSummary(line))}</span>
                   </button>
                 `,
               )}

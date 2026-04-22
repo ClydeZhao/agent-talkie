@@ -115,6 +115,13 @@ export class TalkieRosterEntry extends LitElement {
       color: var(--talkie-muted, #8b949e);
       text-transform: none;
     }
+    .blocked-reason {
+      font-size: 11px;
+      color: #f87171;
+      margin-top: 4px;
+      word-break: break-word;
+      line-height: 1.35;
+    }
     .meta {
       display: flex;
       flex-wrap: wrap;
@@ -349,6 +356,9 @@ export class TalkieRosterEntry extends LitElement {
                 <span class="progress-label">${prog}</span>
               </span>
             </div>
+            ${blocked && r.blockedReason.length > 0
+              ? html`<div class="blocked-reason">${r.blockedReason}</div>`
+              : nothing}
             <div class="meta">
               <span class="badge" title=${r.runtime}>${r.runtime}</span>
               <span class="badge" title=${r.workspaceLabel}
