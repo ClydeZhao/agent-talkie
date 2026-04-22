@@ -14,7 +14,8 @@ import {
 import { RELAY_GENERATION_KEY } from "../bridge/session-storage-keys.js";
 import "../errors/talkie-error-bar.js";
 import "../roster/talkie-roster.js";
-import "../transcript/talkie-transcript.js";
+import { TalkieTranscript } from "../transcript/talkie-transcript.js";
+import "../shell/talkie-search-panel.js";
 import {
   DashboardStore,
   type OversightSpaceSummary,
@@ -57,9 +58,16 @@ void (async () => {
   const roster = document.createElement("talkie-roster");
   const mainPanel = document.createElement("div");
   mainPanel.id = "talkie-main-panel";
+  const workspace = document.createElement("div");
+  workspace.className = "talkie-transcript-workspace";
   const transcript = document.createElement("talkie-transcript");
   transcript.store = store;
-  mainPanel.appendChild(transcript);
+  const searchPanel = document.createElement("talkie-search-panel");
+  searchPanel.store = store;
+  searchPanel.style.display = "none";
+  workspace.appendChild(transcript);
+  workspace.appendChild(searchPanel);
+  mainPanel.appendChild(workspace);
 
   const sendBar = document.createElement("talkie-send-bar");
   sendBar.store = store;
@@ -137,6 +145,14 @@ void (async () => {
   app.appendChild(errorBar);
   app.appendChild(bodyRow);
 
+  app.addEventListener("talkie-jump-to-dedupe", (ev) => {
+    const d = (ev as CustomEvent<{ dedupeKey: string }>).detail;
+    const t = document.querySelector("talkie-transcript");
+    if (t instanceof TalkieTranscript) {
+      t.scrollToDedupeKey(d.dedupeKey);
+    }
+  });
+
   const httpOrigin = deriveHttpOriginFromWsUrl(wsUrl);
   picker.httpOrigin = httpOrigin;
   picker.bridge = bridge;
@@ -153,6 +169,8 @@ void (async () => {
     roster.selfSessionId = store.selfSessionId ?? "";
     picker.currentSlug = store.currentSpaceSlug;
     picker.selfIsOwner = store.selfIsOwner;
+    picker.destroyedSlug = store.spaceDestroyedSlug;
+    searchPanel.style.display = store.transcriptSearchPanelOpen ? "flex" : "none";
   });
 
   bridge.onProtocolError((w) => {
@@ -198,6 +216,10 @@ void (async () => {
 
   bridge.onSpaceDestroyedWire((msg) => {
     store.noteSpaceDestroyed(msg.slug);
+    if (msg.slug === store.currentSpaceSlug) {
+      store.stopSnapshotRefresh();
+      bridge.close();
+    }
   });
 
   picker.addEventListener("talkie-space-refresh", () => {

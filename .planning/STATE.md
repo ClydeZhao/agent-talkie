@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Web Dashboard
 status: executing
-last_updated: "2026-04-22T14:45:00.000Z"
-last_activity: 2026-04-22 -- Completed plan 12-01 (MiniSearch + visible transcript)
+last_updated: "2026-04-22T15:00:00.000Z"
+last_activity: 2026-04-22 -- Completed plan 12-02 (search panel UI + roster attention lane)
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 18
-  completed_plans: 17
-  percent: 90
+  completed_plans: 18
+  percent: 94
 ---
 
 ## Project Reference
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-17)
 
 **Core value:** Sessions from different runtimes can collaborate directly through a shared space without the human acting as copy-paste middleware.
-**Current focus:** Phase 12 executing (12-01 done; 12-02 UI/attention; OVER-05 descoped)
+**Current focus:** Phase 12 — 12-01/12-02 executed (OVER-05 descoped)
 
 ## Current Position
 
 Phase: 12-discovery-topology-attention
-Plan: 12-02-PLAN.md (next) — 12-01-PLAN executed
-Status: Executing
-Last activity: 2026-04-22 -- Completed 12-01 (MiniSearch, filters, visible lines, scrollToDedupeKey)
+Plan: 12-02 executed (see 12-02-SUMMARY.md)
+Status: Phase 12 plans complete for current roadmap slice
+Last activity: 2026-04-22 -- Completed 12-02 (search panel, split layout, Needs Attention roster)
 
 ## Accumulated Context
 

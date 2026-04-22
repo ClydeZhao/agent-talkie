@@ -99,6 +99,8 @@ export class DashboardStore {
   transcriptLines: TranscriptLine[] = [];
   /** Client-side full-text query over loaded lines (AND with filters). */
   transcriptSearchQuery = "";
+  /** Right-hand transcript search/filter panel (D-03). */
+  transcriptSearchPanelOpen = false;
   /** `null` = any sender. */
   transcriptFilterSenderSessionId: string | null = null;
   transcriptFilterKind: "all" | "control" | "conversation" = "all";
@@ -136,6 +138,14 @@ export class DashboardStore {
       return;
     }
     this.transcriptSearchQuery = q;
+    this.notify();
+  }
+
+  setTranscriptSearchPanelOpen(open: boolean): void {
+    if (this.transcriptSearchPanelOpen === open) {
+      return;
+    }
+    this.transcriptSearchPanelOpen = open;
     this.notify();
   }
 

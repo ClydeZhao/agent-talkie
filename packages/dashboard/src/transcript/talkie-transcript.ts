@@ -21,12 +21,32 @@ export class TalkieTranscript extends LitElement {
     }
     .head {
       flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .head-title {
       font-size: 11px;
       font-weight: 600;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--talkie-muted, #8b949e);
-      margin-bottom: 8px;
+    }
+    .search-toggle {
+      flex-shrink: 0;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--talkie-border, #30363d);
+      background: var(--talkie-badge-bg, #21262d);
+      color: var(--talkie-fg, #e6edf3);
+      cursor: pointer;
+    }
+    .search-toggle:hover {
+      border-color: var(--talkie-muted, #8b949e);
     }
     lit-virtualizer {
       flex: 1;
@@ -98,7 +118,10 @@ export class TalkieTranscript extends LitElement {
       this._prevLen = len;
       this.pendingNew = 0;
       this.requestUpdate();
+      return;
     }
+    // Same length: filters/search may still change visible line contents (D-09).
+    this.requestUpdate();
   }
 
   private _scheduleScrollToBottom(): void {
@@ -134,6 +157,10 @@ export class TalkieTranscript extends LitElement {
     this.requestUpdate();
   }
 
+  private _toggleSearchPanel(): void {
+    this.store.setTranscriptSearchPanelOpen(!this.store.transcriptSearchPanelOpen);
+  }
+
   scrollToDedupeKey(dedupeKey: string): void {
     const lines = this.store.getVisibleTranscriptLines();
     const index = lines.findIndex((l) => l.dedupeKey === dedupeKey);
@@ -153,7 +180,17 @@ export class TalkieTranscript extends LitElement {
     const showNew = this.pendingNew > 0 && !this._isPinnedToBottom;
 
     return html`
-      <div class="head">Transcript</div>
+      <div class="head">
+        <span class="head-title">Transcript</span>
+        <button
+          type="button"
+          class="search-toggle"
+          aria-label="Search transcript"
+          @click=${this._toggleSearchPanel}
+        >
+          搜索
+        </button>
+      </div>
       <lit-virtualizer
         scroller
         .items=${this.store.getVisibleTranscriptLines()}

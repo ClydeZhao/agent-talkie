@@ -29,6 +29,18 @@ export class TalkieRoster extends LitElement {
       font-size: 13px;
       color: var(--talkie-muted, #8b949e);
     }
+    .talkie-roster-attention {
+      border-bottom: 1px solid var(--talkie-border, #30363d);
+      background: #121820;
+    }
+    .attention-sub {
+      padding: 8px 12px 4px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: none;
+      color: var(--talkie-muted, #8b949e);
+    }
   `;
 
   @property({ type: Array })
@@ -41,19 +53,31 @@ export class TalkieRoster extends LitElement {
   selfSessionId = "";
 
   render() {
-    const sorted = [...this.entries].sort((a, b) => {
-      const aBlocked = a.progress === "blocked" ? 1 : 0;
-      const bBlocked = b.progress === "blocked" ? 1 : 0;
-      if (aBlocked !== bBlocked) {
-        return bBlocked - aBlocked;
-      }
-      return a.sessionId.localeCompare(b.sessionId);
-    });
+    const blocked = this.entries.filter((r) => r.progress === "blocked");
+    const rest = this.entries
+      .filter((r) => r.progress !== "blocked")
+      .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    const hasAny = this.entries.length > 0;
     return html`
       <div class="head">Roster</div>
-      ${sorted.length === 0
+      ${blocked.length > 0
+        ? html`
+            <div class="talkie-roster-attention">
+              <div class="attention-sub">Needs Attention</div>
+              ${blocked.map(
+                (row) =>
+                  html`<talkie-roster-entry
+                    .row=${row}
+                    .selfIsOwner=${this.selfIsOwner}
+                    .selfSessionId=${this.selfSessionId}
+                  ></talkie-roster-entry>`,
+              )}
+            </div>
+          `
+        : null}
+      ${!hasAny
         ? html`<div class="empty">No members yet</div>`
-        : sorted.map(
+        : rest.map(
             (row) =>
               html`<talkie-roster-entry
                 .row=${row}

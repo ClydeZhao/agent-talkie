@@ -28,7 +28,7 @@
 - [x] **Phase 9: Core oversight UI** — Roster, transcript tail, metadata chips, relay errors (completed 2026-04-17)
 - [x] **Phase 10: Interactive human controls** — Send, orchestrator designate/clear, idempotent retries
 - [x] **Phase 11: Space & membership management** — Create/destroy spaces, invite/remove, space picker
-- [ ] **Phase 12: Discovery & attention** — Transcript search/filter (client index), attention lane (拓扑图 OVER-05 已延後) *(12-01 数据层已完成，12-02 UI 待做)*
+- [x] **Phase 12: Discovery & attention** — Transcript search/filter (client index), attention lane (拓扑图 OVER-05 已延後) *(12-01 数据层已完成，12-02 UI 待做)* (completed 2026-04-22)
 
 ## Phase Details
 
@@ -121,7 +121,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. User can search and filter the transcript by sender, message kind, and time window within the loaded history (client-side index).
   2. User sees a blocked / attention lane that highlights sessions needing human attention, consistent with collaboration metadata (`progress === "blocked"`).
-**Plans:** 1/2 complete (12-01 done; 12-02 remaining)
+**Plans:** 2/2 plans complete
 **UI hint**: yes
 
 Plans:
@@ -143,7 +143,7 @@ Plans:
 | 9. Core oversight UI | v2.0 | 4/4 | Complete   | 2026-04-17 |
 | 10. Interactive human controls | v2.0 | 3/3 | Complete | 2026-04-20 |
 | 11. Space & membership management | v2.0 | 3/3 | Complete   | 2026-04-21 |
-| 12. Discovery & attention | v2.0 | 1/2 | In progress | - |
+| 12. Discovery & attention | v2.0 | 2/2 | Complete   | 2026-04-22 |
 
 ---
 *Full v1.0 phase details archived to `.planning/milestones/v1.0-ROADMAP.md`*

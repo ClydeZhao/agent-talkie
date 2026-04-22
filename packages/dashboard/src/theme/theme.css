@@ -53,3 +53,10 @@ body {
   border-left: 1px solid var(--talkie-border);
   background: var(--talkie-bg);
 }
+
+.talkie-transcript-workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
