@@ -111,7 +111,7 @@ Plans:
 
 Plans:
 - [x] 11-01-PLAN.md — Relay `space.destroy`：`handleSpaceDestroy`、调度、`space.destroyed`、SessionRegistry 踢线、Vitest（MGMT-01 服务端）
-- [x] 11-02-PLAN.md — Relay `membership.remove` + 仪表盘 `sendMembershipRemove`、名册 Owner-only Remove、MGMT-02 invite N/A 注释（MGMT-02）
+- [x] 11-02-PLAN.md — Relay `membership.remove` + 仪表盘 `sendMembershipRemove`、名册 Owner-only Remove（MGMT-02 remove；invite deferred to future milestone）
 - [x] 11-03-PLAN.md — `listOversightSpaces` + `GET /oversight/spaces`、`talkie-space-picker`、`?space=`/`default`、`sendSpaceDestroy` 与创建 join（MGMT-01 UI + MGMT-03）
 
 ### Phase 12: Discovery & attention
@@ -126,7 +126,7 @@ Plans:
 
 Plans:
 - [x] [12-01-PLAN.md](.planning/phases/12-discovery-topology-attention/12-01-PLAN.md) — MiniSearch 索引、篩選狀態、`getVisibleTranscriptLines`、`TalkieTranscript` 可見行與 `scrollToDedupeKey`（OVER-03 數據層）
-- [ ] [12-02-PLAN.md](.planning/phases/12-discovery-topology-attention/12-02-PLAN.md) — 右欄搜尋面板、分欄、名册 **Needs Attention**（OVER-03 UI + OVER-06）
+- [x] [12-02-PLAN.md](.planning/phases/12-discovery-topology-attention/12-02-PLAN.md) — 右欄搜尋面板、分欄、名册 **Needs Attention**（OVER-03 UI + OVER-06）
 
 ## Progress
 

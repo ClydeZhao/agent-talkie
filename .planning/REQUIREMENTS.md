@@ -33,7 +33,7 @@ Requirements for web dashboard milestone. Each maps to roadmap phases.
 ### Space & Session Management
 
 - [x] **MGMT-01**: User can create and destroy collaboration spaces from dashboard
-- [x] **MGMT-02**: User can invite/remove sessions from a space
+- [x] **MGMT-02**: User can remove sessions from a space (invite deferred — localhost v2.0 uses CLI `join` for entry)
 - [x] **MGMT-03**: User can list and switch between spaces via space picker
 
 ## Future Requirements
