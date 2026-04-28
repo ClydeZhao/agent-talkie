@@ -160,7 +160,12 @@ export class TalkieSendBar extends LitElement {
   private _targetLabel(): string {
     const sid = this.store.sendTargetSessionId;
     if (sid === null) {
-      return "To: Orchestrator";
+      const orchestrator = Array.from(this.store.roster.values()).find(
+        (row) => row.orchestrator,
+      );
+      return orchestrator
+        ? `To: Orchestrator (${orchestrator.displayName})`
+        : "To: Orchestrator";
     }
     const row = this.store.roster.get(sid);
     const name = row?.displayName ?? `${sid.slice(0, 8)}…`;
@@ -247,7 +252,7 @@ export class TalkieSendBar extends LitElement {
       </div>
       ${showOrchHint
         ? html`<div class="hint">
-            Designate an orchestrator to send messages
+            No orchestrator selected
           </div>`
         : null}
       <div class="row">

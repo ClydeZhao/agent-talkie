@@ -11,6 +11,11 @@ import {
   runWhoCommand,
 } from "./oversight/static-commands.js";
 import { runWatch } from "./oversight/watch.js";
+import {
+  runJoinCommand,
+  runPullCommand,
+  runSendCommand,
+} from "./session-commands.js";
 
 function parseWatchRefreshMs(raw: string | undefined): number {
   const defaultMs = 1000;
@@ -112,11 +117,16 @@ program
 program
   .command("dashboard")
   .description("Ensure relay is running and open the web dashboard")
+  .option("--space <slug>", "Open a specific space")
   .option("--no-open", "Print URL only; do not open a browser")
-  .action(async (opts: { open?: boolean }) => {
+  .action(async (opts: { open?: boolean; space?: string }) => {
     try {
       const { port } = await ensureRelayRunning({});
-      const url = `http://127.0.0.1:${port}/dashboard`;
+      const suffix =
+        typeof opts.space === "string" && opts.space.trim() !== ""
+          ? `?space=${encodeURIComponent(opts.space.trim())}`
+          : "";
+      const url = `http://127.0.0.1:${port}/dashboard${suffix}`;
       console.log(url);
       if (opts.open !== false) {
         await openUrl(url);
@@ -142,6 +152,84 @@ spaceCmd
   .action(async (opts: { slug: string }) => {
     try {
       await runSpaceStatus(opts.slug);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("join")
+  .description("Join or create a collaboration space as a local CLI session")
+  .requiredOption("--slug <slug>", "space slug")
+  .requiredOption("--name <name>", "local session display name")
+  .requiredOption("--runtime <runtime>", "runtime label")
+  .option("--workspace <label>", "workspace label")
+  .action(async (opts: {
+    slug: string;
+    name: string;
+    runtime: string;
+    workspace?: string;
+  }) => {
+    try {
+      await runJoinCommand(opts);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("send")
+  .description("Send a conversation message from the current local CLI session")
+  .requiredOption("--slug <slug>", "space slug")
+  .option("--to <session>", "target session id or display name")
+  .option("--name <name>", "select a joined local session by display name")
+  .option("--runtime <runtime>", "select a joined local session by runtime")
+  .option("--workspace <label>", "select a joined local session by workspace label")
+  .argument("<message>", "message text")
+  .action(async (message: string, opts: {
+    slug: string;
+    to?: string;
+    name?: string;
+    runtime?: string;
+    workspace?: string;
+  }) => {
+    try {
+      await runSendCommand(message, opts);
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+program
+  .command("pull")
+  .description("Pull inbound messages for the current local CLI session")
+  .requiredOption("--slug <slug>", "space slug")
+  .option("--name <name>", "select a joined local session by display name")
+  .option("--runtime <runtime>", "select a joined local session by runtime")
+  .option("--workspace <label>", "select a joined local session by workspace label")
+  .option("--clear", "advance the local cursor past returned messages")
+  .option(
+    "--limit <n>",
+    "max messages (default 20, max 100)",
+    (raw: string) => {
+      const n = parseInt(String(raw), 10);
+      if (Number.isNaN(n)) {
+        return 20;
+      }
+      return Math.min(100, Math.max(1, n));
+    },
+    20,
+  )
+  .action(async (opts: {
+    slug: string;
+    name?: string;
+    runtime?: string;
+    workspace?: string;
+    clear?: boolean;
+    limit: number;
+  }) => {
+    try {
+      await runPullCommand(opts);
     } catch (e) {
       handleError(e);
     }

@@ -7,20 +7,39 @@ import type { ChildProcess } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { v4 as uuidv4, v7 as uuidv7 } from "uuid";
 import type { TalkieSessionClient } from "@agent-talkie/client";
-import {
-  safeParseEnvelope,
-  type Envelope,
-} from "@agent-talkie/protocol";
+import type { Envelope } from "@agent-talkie/protocol";
 import { runCodexAdapter } from "./codex-bridge.js";
 
 const REG_SID = uuidv7();
+const HUMAN_SID = uuidv7();
 const SPACE_SID = uuidv7();
+const SPACE_SID_2 = uuidv7();
+const THREAD_ID = uuidv4();
+const THREAD_ID_2 = uuidv4();
+const CODEX_SESSION_STATE_FILE = "adapter-codex-session-state.json";
+const CODEX_THREAD_STATE_FILE = "adapter-codex-thread-state.json";
+
+type MockChild = ChildProcess & {
+  stdin: PassThrough;
+  stdout: PassThrough;
+  stderr: PassThrough;
+};
 
 function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function createMockChild(): ChildProcess {
+async function waitFor(fn: () => boolean): Promise<void> {
+  for (let i = 0; i < 40; i += 1) {
+    if (fn()) {
+      return;
+    }
+    await flushMicrotasks();
+  }
+  throw new Error("condition_not_met");
+}
+
+function createMockChild(): MockChild {
   const emitter = new EventEmitter() as EventEmitter & {
     stdin: PassThrough;
     stdout: PassThrough;
@@ -29,29 +48,19 @@ function createMockChild(): ChildProcess {
   emitter.stdin = new PassThrough();
   emitter.stdout = new PassThrough();
   emitter.stderr = new PassThrough();
-  return emitter as unknown as ChildProcess;
+  return emitter as unknown as MockChild;
 }
 
-function writeContentLengthFrame(stream: PassThrough, obj: unknown): void {
-  const b = Buffer.from(JSON.stringify(obj), "utf8");
-  stream.write(`Content-Length: ${b.length}\r\n\r\n`);
-  stream.write(b);
+function writeJsonLines(stream: PassThrough, events: unknown[]): void {
+  for (const event of events) {
+    stream.write(`${JSON.stringify(event)}\n`);
+  }
 }
 
-function parseFirstJsonFrame(buf: Buffer): unknown {
-  const sep = buf.indexOf("\r\n\r\n");
-  if (sep === -1) {
-    throw new Error("no header terminator in stdin capture");
-  }
-  const headerText = buf.subarray(0, sep).toString("utf8");
-  const m = /^Content-Length:\s*(\d+)\s*$/im.exec(headerText);
-  if (!m) {
-    throw new Error(`bad Content-Length header: ${headerText}`);
-  }
-  const len = Number.parseInt(m[1], 10);
-  const bodyStart = sep + 4;
-  const body = buf.subarray(bodyStart, bodyStart + len);
-  return JSON.parse(body.toString("utf8")) as unknown;
+function finishChild(child: MockChild, exitCode: number): void {
+  child.stdout.end();
+  child.stderr.end();
+  child.emit("exit", exitCode, null);
 }
 
 class MockTalkieSessionClient {
@@ -60,7 +69,7 @@ class MockTalkieSessionClient {
   registerSession = vi.fn(async () => ({
     sessionId: REG_SID,
     reconnectSecret: "r",
-    displayName: "d",
+    displayName: "codex-adapter",
   }));
   resume = vi.fn(async () => ({
     sessionId: REG_SID,
@@ -71,22 +80,21 @@ class MockTalkieSessionClient {
     slug: "demo",
   }));
   sendEnvelope = vi.fn();
-  onEnvelope = vi.fn((h: (e: Envelope) => void) => {
-    this.handlers.add(h);
+  onEnvelope = vi.fn((handler: (e: Envelope) => void) => {
+    this.handlers.add(handler);
   });
   close = vi.fn();
   constructor(_opts?: { url?: string }) {
     void _opts;
   }
-  deliver(env: Envelope): void {
-    for (const h of this.handlers) {
-      h(env);
+  deliver(envelope: Envelope): void {
+    for (const handler of this.handlers) {
+      handler(envelope);
     }
   }
 }
 
 describe("runCodexAdapter", () => {
-  let mockChild: ChildProcess;
   let dataDir: string;
 
   beforeEach(() => {
@@ -104,151 +112,86 @@ describe("runCodexAdapter", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it("calls sendEnvelope with child stdout envelope (instance spy)", async () => {
+  it("runs codex exec for the first inbound message and relays the final agent reply", async () => {
     let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
     class TrackedMock extends MockTalkieSessionClient {
       constructor(opts?: { url?: string }) {
         super(opts);
         createdClient = this;
       }
     }
-    const mockSpawn = vi.fn((): ChildProcess => {
-      mockChild = createMockChild();
-      return mockChild;
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
     });
-    const outEnv: Envelope = {
-      version: 1,
-      id: uuidv4(),
-      sessionId: uuidv7(),
-      kind: "control",
-      type: "task.assign",
-      payload: { summary: "do work" },
-    };
 
     const run = runCodexAdapter({
       spawn: mockSpawn as typeof import("node:child_process").spawn,
       ensureRelay: async () => ({ port: 18765 }),
       TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
     });
     await flushMicrotasks();
     await flushMicrotasks();
 
-    writeContentLengthFrame(mockChild.stdout as PassThrough, outEnv);
-    (mockChild.stdout as PassThrough).end();
-    (mockChild.stderr as PassThrough).end();
-    mockChild.emit("exit", 0, null);
-
-    await run;
-
-    expect(createdClient).not.toBeNull();
-    expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: outEnv.kind,
-        type: outEnv.type,
-        sessionId: outEnv.sessionId,
-      }),
-    );
-  });
-
-  it("writes Content-Length framed stdin for inbound conversation envelope (round-trip)", async () => {
-    let createdClient: MockTalkieSessionClient | null = null;
-    class TrackedMock extends MockTalkieSessionClient {
-      constructor(opts?: { url?: string }) {
-        super(opts);
-        createdClient = this;
-      }
-    }
-    const mockSpawn = vi.fn((): ChildProcess => {
-      mockChild = createMockChild();
-      return mockChild;
-    });
-    const chunks: Buffer[] = [];
-    const run = runCodexAdapter({
-      spawn: mockSpawn as typeof import("node:child_process").spawn,
-      ensureRelay: async () => ({ port: 18765 }),
-      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
-    });
-    await flushMicrotasks();
-    await flushMicrotasks();
-
-    (mockChild.stdin as PassThrough).on("data", (c: Buffer | string) => {
-      chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
-    });
-
-    const inbound: Envelope = {
+    createdClient!.deliver({
       version: 1,
       id: uuidv4(),
-      sessionId: uuidv7(),
+      sessionId: HUMAN_SID,
       kind: "conversation",
       type: "chat.message",
-      payload: { text: "hi" },
-      to: REG_SID,
-    };
-    expect(safeParseEnvelope(inbound).success).toBe(true);
-    createdClient!.deliver(inbound);
-
-    await flushMicrotasks();
-    await flushMicrotasks();
-
-    (mockChild.stdout as PassThrough).end();
-    (mockChild.stderr as PassThrough).end();
-    mockChild.emit("exit", 0, null);
-
-    await run;
-
-    const stdinBuf = Buffer.concat(chunks);
-    const parsed = parseFirstJsonFrame(stdinBuf) as Record<string, unknown>;
-    expect(parsed.kind).toBe("conversation");
-    expect(parsed.type).toBe("chat.message");
-    expect(parsed.payload).toEqual({ text: "hi" });
-  });
-
-  it("sends metadata.patch blocked once for stderr line needs your approval to run", async () => {
-    let createdClient: MockTalkieSessionClient | null = null;
-    class TrackedMock extends MockTalkieSessionClient {
-      constructor(opts?: { url?: string }) {
-        super(opts);
-        createdClient = this;
-      }
-    }
-    const mockSpawn = vi.fn((): ChildProcess => {
-      mockChild = createMockChild();
-      return mockChild;
+      spaceId: SPACE_SID,
+      payload: { text: "summarize the diff" },
     });
 
-    const run = runCodexAdapter({
-      spawn: mockSpawn as typeof import("node:child_process").spawn,
-      ensureRelay: async () => ({ port: 18765 }),
-      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
-    });
-    await flushMicrotasks();
-    await flushMicrotasks();
-
-    (mockChild.stderr as PassThrough).write("needs your approval to run\n");
-    (mockChild.stdout as PassThrough).end();
-    (mockChild.stderr as PassThrough).end();
-    mockChild.emit("exit", 0, null);
-
-    await run;
-
-    const blockedCalls = createdClient!.sendEnvelope.mock.calls.filter(
-      (call) =>
-        (call[0] as Envelope).type === "metadata.patch" &&
-        (call[0] as Envelope).kind === "control",
+    await waitFor(() => children.length === 1);
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "codex",
+      ["exec", "--json", "summarize the diff"],
+      expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
     );
-    expect(blockedCalls).toHaveLength(1);
-    const env = blockedCalls[0]![0] as Envelope;
-    expect(env.payload).toMatchObject({
-      namespace: "status",
-      patch: {
-        progress: "blocked",
-        blockedReason: "needs your approval to run",
+
+    writeJsonLines(children[0]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: {
+          type: "agent_message",
+          content: [{ type: "text", text: "Diff summary from Codex" }],
+        },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[0]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length > 0);
+
+    expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: REG_SID,
+        kind: "conversation",
+        type: "chat.message",
+        spaceId: SPACE_SID,
+        payload: { text: "Diff summary from Codex" },
+      }),
+    );
+    expect(
+      JSON.parse(
+        readFileSync(join(dataDir, CODEX_THREAD_STATE_FILE), "utf8"),
+      ) as { spaces: Record<string, { threadId: string }> },
+    ).toEqual({
+      spaces: {
+        [SPACE_SID]: { threadId: THREAD_ID },
       },
     });
-    expect(env.spaceId).toBe(SPACE_SID);
+
+    abortController.abort();
+    await run;
   });
 
-  it("does not send second metadata.patch within cooldown for same stderr pattern", async () => {
+  it("signals readiness after the session is joined and inbound messages are subscribed", async () => {
     let createdClient: MockTalkieSessionClient | null = null;
     class TrackedMock extends MockTalkieSessionClient {
       constructor(opts?: { url?: string }) {
@@ -256,45 +199,159 @@ describe("runCodexAdapter", () => {
         createdClient = this;
       }
     }
-    const mockSpawn = vi.fn((): ChildProcess => {
-      mockChild = createMockChild();
-      return mockChild;
+    const abortController = new AbortController();
+    let readySessionId: string | undefined;
+    const ready = new Promise<void>((resolve) => {
+      const run = runCodexAdapter({
+        spawn: vi.fn(createMockChild) as unknown as typeof import("node:child_process").spawn,
+        ensureRelay: async () => ({ port: 18765 }),
+        TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+        signal: abortController.signal,
+        onReady: ({ sessionId }) => {
+          readySessionId = sessionId;
+          resolve();
+        },
+      });
+      void run.finally(() => {});
+    });
+
+    await ready;
+    expect(readySessionId).toBe(REG_SID);
+    expect(createdClient!.joinSpace).toHaveBeenCalledWith({
+      slug: "demo",
+      idempotencyKey: expect.any(String),
+    });
+    expect(createdClient!.onEnvelope).toHaveBeenCalled();
+
+    abortController.abort();
+  });
+
+  it("resumes both the Talkie session and the Codex thread on later turns", async () => {
+    process.env.TALKIE_CODEX_ARGS_JSON =
+      '["--sandbox","read-only","--model","gpt-5.2"]';
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    writeFileSync(
+      join(dataDir, CODEX_SESSION_STATE_FILE),
+      JSON.stringify({
+        sessionId: REG_SID,
+        reconnectSecret: "stored-secret",
+      }),
+      "utf8",
+    );
+    writeFileSync(
+      join(dataDir, CODEX_THREAD_STATE_FILE),
+      JSON.stringify({
+        spaces: {
+          [SPACE_SID]: { threadId: THREAD_ID },
+        },
+      }),
+      "utf8",
+    );
+
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
     });
 
     const run = runCodexAdapter({
       spawn: mockSpawn as typeof import("node:child_process").spawn,
       ensureRelay: async () => ({ port: 18765 }),
       TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
     });
     await flushMicrotasks();
     await flushMicrotasks();
 
-    (mockChild.stderr as PassThrough).write(
-      "needs your approval to run\nneeds your approval to run\n",
-    );
-    (mockChild.stdout as PassThrough).end();
-    (mockChild.stderr as PassThrough).end();
-    mockChild.emit("exit", 0, null);
+    expect(createdClient!.resume).toHaveBeenCalledWith({
+      sessionId: REG_SID,
+      reconnectSecret: "stored-secret",
+    });
+    expect(createdClient!.registerSession).not.toHaveBeenCalled();
 
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "continue the same thread" },
+    });
+
+    await waitFor(() => children.length === 1);
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "codex",
+      [
+        "exec",
+        "--json",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-5.2",
+        "resume",
+        THREAD_ID,
+        "continue the same thread",
+      ],
+      expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+    );
+
+    writeJsonLines(children[0]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "Resumed reply" },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[0]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length > 0);
+
+    expect(
+      JSON.parse(
+        readFileSync(join(dataDir, CODEX_SESSION_STATE_FILE), "utf8"),
+      ) as { sessionId: string; reconnectSecret: string },
+    ).toEqual({
+      sessionId: REG_SID,
+      reconnectSecret: "r2",
+    });
+    expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "conversation",
+        spaceId: SPACE_SID,
+        payload: { text: "Resumed reply" },
+      }),
+    );
+
+    abortController.abort();
     await run;
-
-    const blockedCalls = createdClient!.sendEnvelope.mock.calls.filter(
-      (call) => (call[0] as Envelope).type === "metadata.patch",
-    );
-    expect(blockedCalls).toHaveLength(1);
   });
 
-  it("resumes from persisted session credentials and rotates the stored secret", async () => {
-    let createdClient: MockTalkieSessionClient | null = null;
+  it("registers a fresh session when the resumed session is in another space", async () => {
+    const clients: MockTalkieSessionClient[] = [];
     class TrackedMock extends MockTalkieSessionClient {
       constructor(opts?: { url?: string }) {
         super(opts);
-        createdClient = this;
+        clients.push(this);
+        if (clients.length === 1) {
+          this.joinSpace = vi.fn(async () => {
+            throw new Error('{"error":"already_in_space"}');
+          });
+        }
       }
     }
-    const statePath = join(dataDir, "adapter-codex-session-state.json");
+
     writeFileSync(
-      statePath,
+      join(dataDir, CODEX_SESSION_STATE_FILE),
       JSON.stringify({
         sessionId: REG_SID,
         reconnectSecret: "stored-secret",
@@ -302,38 +359,496 @@ describe("runCodexAdapter", () => {
       "utf8",
     );
 
-    const mockSpawn = vi.fn((): ChildProcess => {
-      mockChild = createMockChild();
-      return mockChild;
+    const abortController = new AbortController();
+    let readySessionId: string | undefined;
+    const ready = new Promise<void>((resolve) => {
+      const run = runCodexAdapter({
+        spawn: vi.fn(createMockChild) as unknown as typeof import("node:child_process").spawn,
+        ensureRelay: async () => ({ port: 18765 }),
+        TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+        signal: abortController.signal,
+        onReady: ({ sessionId }) => {
+          readySessionId = sessionId;
+          resolve();
+        },
+      });
+      void run.finally(() => {});
+    });
+
+    await ready;
+
+    expect(clients).toHaveLength(2);
+    expect(clients[0]!.resume).toHaveBeenCalledWith({
+      sessionId: REG_SID,
+      reconnectSecret: "stored-secret",
+    });
+    expect(clients[0]!.close).toHaveBeenCalledOnce();
+    expect(clients[1]!.registerSession).toHaveBeenCalledOnce();
+    expect(clients[1]!.joinSpace).toHaveBeenCalledWith({
+      slug: "demo",
+      idempotencyKey: expect.any(String),
+    });
+    expect(readySessionId).toBe(REG_SID);
+
+    abortController.abort();
+  });
+
+  it("reports blocked stderr lines via metadata.patch while a turn is running", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
     });
 
     const run = runCodexAdapter({
       spawn: mockSpawn as typeof import("node:child_process").spawn,
       ensureRelay: async () => ({ port: 18765 }),
       TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
     });
     await flushMicrotasks();
     await flushMicrotasks();
 
-    (mockChild.stdout as PassThrough).end();
-    (mockChild.stderr as PassThrough).end();
-    mockChild.emit("exit", 0, null);
-    await run;
-
-    expect(createdClient).not.toBeNull();
-    expect(createdClient!.resume).toHaveBeenCalledWith({
-      sessionId: REG_SID,
-      reconnectSecret: "stored-secret",
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "run tests" },
     });
-    expect(createdClient!.registerSession).not.toHaveBeenCalled();
-    expect(
-      JSON.parse(readFileSync(statePath, "utf8")) as {
-        sessionId: string;
-        reconnectSecret: string;
+
+    await waitFor(() => children.length === 1);
+    children[0]!.stderr.write(
+      "needs your approval to run\nneeds your approval to run\n",
+    );
+    writeJsonLines(children[0]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "Waiting finished" },
       },
-    ).toEqual({
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[0]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length >= 2);
+
+    const blockedCalls = createdClient!.sendEnvelope.mock.calls.filter(
+      (call) => (call[0] as Envelope).type === "metadata.patch",
+    );
+    expect(blockedCalls).toHaveLength(1);
+    expect(blockedCalls[0]![0]).toMatchObject({
       sessionId: REG_SID,
-      reconnectSecret: "r2",
+      kind: "control",
+      type: "metadata.patch",
+      spaceId: SPACE_SID,
+      payload: {
+        namespace: "status",
+        patch: {
+          progress: "blocked",
+          blockedReason: "needs your approval to run",
+        },
+      },
     });
+
+    abortController.abort();
+    await run;
+  });
+
+  it("keeps thread ids isolated per Talkie space across turns", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
+    });
+
+    const run = runCodexAdapter({
+      spawn: mockSpawn as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "first space turn" },
+    });
+
+    await waitFor(() => children.length === 1);
+    writeJsonLines(children[0]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "reply one" },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[0]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length === 1);
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID_2,
+      payload: { text: "second space turn" },
+    });
+
+    await waitFor(() => children.length === 2);
+    expect(mockSpawn).toHaveBeenNthCalledWith(
+      2,
+      "codex",
+      ["exec", "--json", "second space turn"],
+      expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+    );
+
+    writeJsonLines(children[1]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID_2 },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "reply two" },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[1]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length === 2);
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "resume first space only" },
+    });
+
+    await waitFor(() => children.length === 3);
+    expect(mockSpawn).toHaveBeenNthCalledWith(
+      3,
+      "codex",
+      ["exec", "--json", "resume", THREAD_ID, "resume first space only"],
+      expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+    );
+    writeJsonLines(children[2]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "reply three" },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[2]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length === 3);
+
+    expect(
+      JSON.parse(
+        readFileSync(join(dataDir, CODEX_THREAD_STATE_FILE), "utf8"),
+      ) as { spaces: Record<string, { threadId: string }> },
+    ).toEqual({
+      spaces: {
+        [SPACE_SID]: { threadId: THREAD_ID },
+        [SPACE_SID_2]: { threadId: THREAD_ID_2 },
+      },
+    });
+
+    abortController.abort();
+    await run;
+  });
+
+  it("dedupes JSONL agent events and emits only the final assistant reply once", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
+    });
+
+    const run = runCodexAdapter({
+      spawn: mockSpawn as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "produce one final answer" },
+    });
+
+    await waitFor(() => children.length === 1);
+    children[0]!.stdout.write("{not valid json}\n");
+    writeJsonLines(children[0]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "draft answer" },
+      },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "draft answer" },
+      },
+      {
+        type: "item.completed",
+        item: {
+          type: "agent_message",
+          content: [
+            { type: "text", text: "final" },
+            { type: "text", text: " answer" },
+          ],
+        },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[0]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length === 1);
+
+    expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "conversation",
+        type: "chat.message",
+        spaceId: SPACE_SID,
+        payload: { text: "final answer" },
+      }),
+    );
+
+    abortController.abort();
+    await run;
+  });
+
+  it("does not start an overlapping Codex run for the same space", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
+    });
+
+    const run = runCodexAdapter({
+      spawn: mockSpawn as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "first turn" },
+    });
+    await waitFor(() => children.length === 1);
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "second turn too early" },
+    });
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length === 1);
+
+    expect(mockSpawn).toHaveBeenCalledTimes(1);
+    expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "control",
+        type: "metadata.patch",
+        spaceId: SPACE_SID,
+        payload: {
+          namespace: "status",
+          patch: {
+            progress: "blocked",
+            blockedReason: expect.stringContaining("already running"),
+          },
+        },
+      }),
+    );
+
+    writeJsonLines(children[0]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "finished first turn" },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[0]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length === 2);
+
+    abortController.abort();
+    await run;
+  });
+
+  it("reports Codex JSONL error events via metadata.patch", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
+    });
+
+    const run = runCodexAdapter({
+      spawn: mockSpawn as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "requires auth" },
+    });
+
+    await waitFor(() => children.length === 1);
+    writeJsonLines(children[0]!.stdout, [
+      { type: "error", message: "missing authentication" },
+    ]);
+    finishChild(children[0]!, 1);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length === 1);
+
+    expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: REG_SID,
+        kind: "control",
+        type: "metadata.patch",
+        spaceId: SPACE_SID,
+        payload: {
+          namespace: "status",
+          patch: {
+            progress: "blocked",
+            blockedReason: "Codex error: missing authentication",
+          },
+        },
+      }),
+    );
+
+    abortController.abort();
+    await run;
+  });
+
+  it("does not label every nonzero Codex exit as blocked", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
+    });
+
+    const run = runCodexAdapter({
+      spawn: mockSpawn as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "this will fail" },
+    });
+
+    await waitFor(() => children.length === 1);
+    children[0]!.stderr.write("codex failed to complete the turn\n");
+    finishChild(children[0]!, 2);
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(createdClient!.sendEnvelope).not.toHaveBeenCalled();
+
+    abortController.abort();
+    await run;
   });
 });

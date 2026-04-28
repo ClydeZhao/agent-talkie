@@ -76,6 +76,18 @@ export class TalkieRosterEntry extends LitElement {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .chip--orchestrator {
+      background: rgba(212, 160, 23, 0.16);
+      color: #f0c15a;
+    }
+    .chip--owner {
+      background: rgba(37, 99, 235, 0.16);
+      color: #93c5fd;
+    }
+    .chip--self {
+      background: rgba(22, 163, 74, 0.16);
+      color: #86efac;
+    }
     .progress-wrap {
       display: inline-flex;
       align-items: center;
@@ -345,6 +357,17 @@ export class TalkieRosterEntry extends LitElement {
           <div class="main">
             <div class="name">${r.displayName}</div>
             <div class="chips-row">
+              ${r.sessionId === this.selfSessionId
+                ? html`<span class="chip chip--self">You</span>`
+                : nothing}
+              ${r.owner
+                ? html`<span class="chip chip--owner">Owner</span>`
+                : nothing}
+              ${r.orchestrator
+                ? html`<span class="chip chip--orchestrator"
+                    >Orchestrator</span
+                  >`
+                : nothing}
               ${r.role
                 ? html`<span class="chip">role:${r.role}</span>`
                 : nothing}

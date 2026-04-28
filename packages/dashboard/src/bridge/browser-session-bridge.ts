@@ -440,8 +440,26 @@ export class BrowserSessionBridge {
         idempotencyKey: crypto.randomUUID(),
       });
       this._reconnectAttemptIndex = 0;
-    } catch {
+    } catch (err) {
       if (this._userRequestedClose) {
+        return;
+      }
+      if (
+        err instanceof Error &&
+        err.message.includes("space_recently_destroyed")
+      ) {
+        const slug = this._lastJoinedSlug;
+        this._lastJoinedSlug = null;
+        this.close();
+        if (slug) {
+          for (const cb of this.spaceDestroyedListeners) {
+            try {
+              cb({ type: "space.destroyed", slug });
+            } catch {
+              /* ignore */
+            }
+          }
+        }
         return;
       }
       void this.beginReconnectBackoff();
@@ -825,6 +843,8 @@ export class BrowserSessionBridge {
         reconnectSecret,
       });
     } catch {
+      storageRemove(SESSION_ID_KEY);
+      storageRemove(RECONNECT_SECRET_KEY);
       return null;
     }
   }

@@ -277,7 +277,7 @@ export class TalkieSessionClient {
   }
 
   async resume(
-    input: SessionResumeMessage,
+    input: Pick<SessionResumeMessage, "sessionId" | "reconnectSecret">,
   ): Promise<{
     sessionId: string;
     reconnectSecret: string;

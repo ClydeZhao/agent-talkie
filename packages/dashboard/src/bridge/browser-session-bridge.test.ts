@@ -613,6 +613,103 @@ describe("BrowserSessionBridge", () => {
     bridge.close();
   });
 
+  it("delivers space.destroyed wire to onSpaceDestroyedWire listeners", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+
+    const spaceId = randomUUID();
+    const joinP = bridge.joinSpace({
+      slug: "room-a",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({ type: "space.joined", spaceId, slug: "room-a" });
+    await joinP;
+
+    const received: Array<{ slug: string }> = [];
+    bridge.onSpaceDestroyedWire((m) => {
+      received.push({ slug: m.slug });
+    });
+
+    ws.simulateInbound({ type: "space.destroyed", slug: "room-a" });
+    expect(received).toEqual([{ slug: "room-a" }]);
+
+    bridge.close();
+  });
+
+  it("close() prevents auto-reconnect after space.destroyed", async () => {
+    vi.useFakeTimers();
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect({ autoReconnect: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const ws = lastMockSocket!;
+
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "H",
+      runtime: "browser",
+      workspaceLabel: "w",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "s",
+      displayName: "H",
+    });
+    await regP;
+
+    const spaceId = randomUUID();
+    const joinP = bridge.joinSpace({
+      slug: "room-a",
+      idempotencyKey: randomUUID(),
+    });
+    ws.simulateInbound({ type: "space.joined", spaceId, slug: "room-a" });
+    await joinP;
+
+    bridge.onSpaceDestroyedWire(() => {
+      bridge.close();
+    });
+
+    ws.simulateInbound({ type: "space.destroyed", slug: "room-a" });
+
+    expect(bridge.getConnectionHealth()).toBe("disconnected");
+
+    const socketCountBefore = lastMockSocket;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(lastMockSocket).toBe(socketCountBefore);
+
+    vi.useRealTimers();
+  });
+
   it("retryLastConversation resends the same envelope JSON", async () => {
     const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
     const connectP = bridge.connect();

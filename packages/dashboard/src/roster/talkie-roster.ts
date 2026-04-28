@@ -16,6 +16,9 @@ export class TalkieRoster extends LitElement {
       overflow-y: auto;
     }
     .head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
       padding: 10px 12px;
       font-size: 11px;
       font-weight: 600;
@@ -23,6 +26,11 @@ export class TalkieRoster extends LitElement {
       text-transform: uppercase;
       color: var(--talkie-muted, #8b949e);
       border-bottom: 1px solid var(--talkie-border, #30363d);
+    }
+    .count {
+      letter-spacing: 0;
+      text-transform: none;
+      font-weight: 500;
     }
     .empty {
       padding: 16px 12px;
@@ -59,7 +67,10 @@ export class TalkieRoster extends LitElement {
       .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
     const hasAny = this.entries.length > 0;
     return html`
-      <div class="head">Roster</div>
+      <div class="head">
+        <span>Participants</span>
+        <span class="count">${this.entries.length}</span>
+      </div>
       ${blocked.length > 0
         ? html`
             <div class="talkie-roster-attention">

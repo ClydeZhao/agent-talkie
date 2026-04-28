@@ -151,6 +151,9 @@ export class TalkieSpacePicker extends LitElement {
   @property({ type: Boolean })
   selfIsOwner = false;
 
+  @property({ type: String, attribute: false })
+  destroyedSlug: string | null = null;
+
   @state()
   private open = false;
 
@@ -299,7 +302,7 @@ export class TalkieSpacePicker extends LitElement {
   }
 
   render() {
-    const destroyed = this.store?.spaceDestroyedSlug;
+    const destroyed = this.destroyedSlug;
     return html`
       <div>
         <button

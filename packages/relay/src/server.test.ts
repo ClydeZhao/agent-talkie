@@ -708,4 +708,205 @@ describe("createRelayServer", () => {
       await srv.close();
     });
   });
+
+  describe("space.destroy broadcast", () => {
+    it("broadcasts space.destroyed to ALL members, then the slug is absent from /oversight/spaces", async () => {
+      const srv = await createRelayServer({ dbPath: testDbPath(), port: 0 });
+      const base = httpOrigin(srv.url);
+
+      const wsOwner = await openWs(srv.url);
+      await handshake(wsOwner);
+      wsOwner.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Owner",
+            runtime: "vitest",
+            workspaceLabel: "w",
+            isHuman: true,
+          },
+        }),
+      );
+      const ownerReg = (await nextJson(wsOwner)) as { sessionId: string };
+      const ownerId = ownerReg.sessionId;
+
+      wsOwner.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: ownerId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: "bcast-room" },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const ownerJoined = (await nextJson(wsOwner)) as { spaceId: string };
+      const spaceId = ownerJoined.spaceId;
+
+      const wsPeer = await openWs(srv.url);
+      await handshake(wsPeer);
+      wsPeer.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Peer",
+            runtime: "vitest",
+            workspaceLabel: "w",
+            isHuman: true,
+          },
+        }),
+      );
+      const peerReg = (await nextJson(wsPeer)) as { sessionId: string };
+      const peerId = peerReg.sessionId;
+
+      wsPeer.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: peerId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: "bcast-room" },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      await nextJson(wsPeer);
+
+      const listBefore = await fetchWithTimeout(
+        `${base}/__agent-talkie/v1/oversight/spaces`,
+      );
+      const spacesBefore = (await listBefore.json()) as Array<{ slug: string }>;
+      expect(spacesBefore.some((s) => s.slug === "bcast-room")).toBe(true);
+
+      const peerDestroyedPromise = nextJson(wsPeer, 5000).catch(() => null);
+
+      wsOwner.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: ownerId,
+          kind: "control",
+          type: "space.destroy",
+          payload: { slug: "bcast-room" },
+          idempotencyKey: randomUUID(),
+          spaceId,
+        }),
+      );
+
+      const ownerMsg = await nextJson(wsOwner);
+      expect(ownerMsg).toEqual({ type: "space.destroyed", slug: "bcast-room" });
+
+      const peerMsg = await peerDestroyedPromise;
+      expect(peerMsg).toEqual({ type: "space.destroyed", slug: "bcast-room" });
+
+      await new Promise((r) => setTimeout(r, 200));
+
+      const listAfter = await fetchWithTimeout(
+        `${base}/__agent-talkie/v1/oversight/spaces`,
+      );
+      const spacesAfter = (await listAfter.json()) as Array<{ slug: string }>;
+      expect(spacesAfter.some((s) => s.slug === "bcast-room")).toBe(false);
+
+      const summaryRes = await fetchWithTimeout(
+        `${base}/__agent-talkie/v1/oversight/space-summary?slug=bcast-room`,
+      );
+      expect(summaryRes.status).toBe(404);
+
+      await srv.close();
+    });
+
+    it("tombstones destroyed slug so a reconnecting client cannot recreate it via space.join", async () => {
+      const srv = await createRelayServer({ dbPath: testDbPath(), port: 0 });
+      const base = httpOrigin(srv.url);
+
+      const wsOwner = await openWs(srv.url);
+      await handshake(wsOwner);
+      wsOwner.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Owner",
+            runtime: "vitest",
+            workspaceLabel: "w",
+            isHuman: true,
+          },
+        }),
+      );
+      const ownerReg = (await nextJson(wsOwner)) as { sessionId: string };
+      const ownerId = ownerReg.sessionId;
+
+      wsOwner.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: ownerId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: "tomb-room" },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const ownerJoined = (await nextJson(wsOwner)) as { spaceId: string };
+      const spaceId = ownerJoined.spaceId;
+
+      wsOwner.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: ownerId,
+          kind: "control",
+          type: "space.destroy",
+          payload: { slug: "tomb-room" },
+          idempotencyKey: randomUUID(),
+          spaceId,
+        }),
+      );
+      await nextJson(wsOwner);
+      await new Promise((r) => setTimeout(r, 100));
+
+      const wsRecon = await openWs(srv.url);
+      await handshake(wsRecon);
+      wsRecon.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Reconnector",
+            runtime: "vitest",
+            workspaceLabel: "w",
+          },
+        }),
+      );
+      const reconReg = (await nextJson(wsRecon)) as { sessionId: string };
+
+      wsRecon.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: reconReg.sessionId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: "tomb-room" },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const joinReply = (await nextJson(wsRecon)) as { type: string; error?: string };
+      expect(joinReply.type).toBe("protocol.error");
+      expect(joinReply.error).toBe("space_recently_destroyed");
+
+      const listAfter = await fetchWithTimeout(
+        `${base}/__agent-talkie/v1/oversight/spaces`,
+      );
+      const spacesAfter = (await listAfter.json()) as Array<{ slug: string }>;
+      expect(spacesAfter.some((s) => s.slug === "tomb-room")).toBe(false);
+
+      const summaryRes = await fetchWithTimeout(
+        `${base}/__agent-talkie/v1/oversight/space-summary?slug=tomb-room`,
+      );
+      expect(summaryRes.status).toBe(404);
+
+      wsRecon.close();
+      await srv.close();
+    });
+  });
 });

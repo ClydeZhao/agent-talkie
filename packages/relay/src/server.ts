@@ -18,6 +18,7 @@ import {
   getOversightSpaceSummaryBySlug,
   listOversightSpaces,
   migrate,
+  normalizeSpaceSlug,
   openDatabase,
 } from "@agent-talkie/persistence";
 import type Database from "better-sqlite3";
@@ -67,6 +68,7 @@ export const RELAY_SUPPORTED_VERSIONS: SupportedVersions = {
   maxVersion: 1,
 };
 export const SESSION_RESUME_TTL_MS = 604800000;
+export const DESTROY_TOMBSTONE_TTL_MS = 60_000;
 
 export type RelayWsContext = {
   ws: WebSocket;
@@ -77,6 +79,7 @@ export type RelayWsContext = {
 export type RelayDispatchContext = RelayWsContext & {
   db: Database.Database;
   registry: SessionRegistry;
+  destroyedSlugs: Map<string, number>;
 };
 
 export function dispatchValidatedEnvelope(
@@ -94,6 +97,21 @@ export function dispatchValidatedEnvelope(
       sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
       return;
     }
+
+    try {
+      const slugNorm = normalizeSpaceSlug(slug);
+      const destroyedAt = ctx.destroyedSlugs.get(slugNorm);
+      if (destroyedAt !== undefined && Date.now() - destroyedAt < DESTROY_TOMBSTONE_TTL_MS) {
+        sendJson(ctx.ws, { type: "protocol.error", error: "space_recently_destroyed" });
+        return;
+      }
+      if (destroyedAt !== undefined) {
+        ctx.destroyedSlugs.delete(slugNorm);
+      }
+    } catch {
+      /* normalizeSpaceSlug may throw for invalid slugs; handleSpaceJoin will reject below */
+    }
+
     const out = handleSpaceJoin(ctx.db, {
       sessionId: ctx.boundSessionId,
       idempotencyKey,
@@ -169,10 +187,19 @@ export function dispatchValidatedEnvelope(
       }
       return;
     }
-    sendJson(ctx.ws, {
-      type: "space.destroyed",
-      slug: out.slug,
-    });
+    ctx.destroyedSlugs.set(out.slug, Date.now());
+
+    for (const sid of out.closeSessionIds) {
+      if (sid === ctx.boundSessionId) {
+        continue;
+      }
+      const s = ctx.registry.get(sid);
+      if (s) {
+        sendJson(s, { type: "space.destroyed", slug: out.slug });
+      }
+    }
+    sendJson(ctx.ws, { type: "space.destroyed", slug: out.slug });
+
     for (const sid of out.closeSessionIds) {
       const s = ctx.registry.get(sid);
       if (s) {
@@ -299,6 +326,7 @@ export async function createRelayServer(opts: {
     "dev-reconnect-pepper";
 
   const registry = new SessionRegistry();
+  const destroyedSlugs = new Map<string, number>();
   const connStates = new Map<WebSocket, ConnState>();
 
   const server = http.createServer();
@@ -340,6 +368,18 @@ export async function createRelayServer(opts: {
       return;
     }
 
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (url.pathname.startsWith("/__agent-talkie/v1/")) {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+      if (req.method === "OPTIONS") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+    }
+
     if (idleShutdownEnabled) {
       clearIdle();
       const onHttpActivityEnd = (): void => {
@@ -350,8 +390,6 @@ export async function createRelayServer(opts: {
       res.once("finish", onHttpActivityEnd);
       res.once("close", onHttpActivityEnd);
     }
-
-    const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
     if (
       url.pathname === "/__agent-talkie/v1/health" &&
@@ -627,6 +665,7 @@ export async function createRelayServer(opts: {
         negotiatedVersion: state.negotiatedVersion,
         db,
         registry,
+        destroyedSlugs,
       },
       envelope,
     );

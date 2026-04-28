@@ -2,17 +2,8 @@ import { spawn as defaultSpawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Writable } from "node:stream";
-import {
-  ContentLengthFrameReader,
-  MAX_FRAME_BODY_BYTES,
-  createBoundedQueue,
-} from "@agent-talkie/adapter-stdio";
 import { TalkieSessionClient } from "@agent-talkie/client";
-import {
-  safeParseEnvelope,
-  type Envelope,
-} from "@agent-talkie/protocol";
+import type { Envelope } from "@agent-talkie/protocol";
 import {
   ensureRelayRunning as defaultEnsureRelay,
   resolveAgentTalkieDataDir,
@@ -22,51 +13,52 @@ export type EnsureRelayRunning = (opts: Record<string, unknown>) => Promise<{
   port: number;
 }>;
 
-const BLOCKED_LINE_RE = /\b(permission|approval|confirm)\b/i;
 const CODEX_SESSION_STATE_FILE = "adapter-codex-session-state.json";
+const CODEX_THREAD_STATE_FILE = "adapter-codex-thread-state.json";
+const BLOCKED_LINE_RE =
+  /\b(permission|approval|approve|confirm|confirmation|blocked|interrupt(?:ed|ion)?|cancel(?:ed|led|ation)?)\b/i;
 
 type PersistedSessionState = {
   sessionId: string;
   reconnectSecret: string;
 };
 
-function looksLikeUuid(s: string): boolean {
+type PersistedThreadState = {
+  spaces: Record<string, { threadId: string }>;
+};
+
+type SpawnResult = {
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  error?: Error;
+};
+
+type TurnRun = {
+  promise: Promise<void>;
+  child?: ChildProcess;
+};
+
+function looksLikeUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    s,
+    value,
   );
 }
 
-function shouldForwardToChild(
-  envelope: Envelope,
-  registeredSessionId: string,
-): boolean {
-  const routed =
-    envelope.sessionId === registeredSessionId ||
-    envelope.to === registeredSessionId;
-  if (!routed) {
-    return false;
-  }
-  if (envelope.kind === "conversation") {
-    return true;
-  }
-  if (envelope.kind === "control") {
-    const t = envelope.type;
-    if (t.startsWith("task.")) {
-      return true;
-    }
-    if (t === "metadata.patch" || t === "metadata.query") {
-      return true;
-    }
-    if (t.startsWith("orchestrator.")) {
-      return true;
-    }
-    return false;
-  }
-  return false;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
-function codexSessionStatePath(): string {
+function normalizeText(value: string): string | undefined {
+  const text = value.trim();
+  return text === "" ? undefined : text;
+}
+
+function resolveSessionStatePath(): string {
   return join(resolveAgentTalkieDataDir(), CODEX_SESSION_STATE_FILE);
+}
+
+function resolveThreadStatePath(): string {
+  return join(resolveAgentTalkieDataDir(), CODEX_THREAD_STATE_FILE);
 }
 
 function loadPersistedSessionState(
@@ -75,19 +67,17 @@ function loadPersistedSessionState(
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
     if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      typeof (parsed as { sessionId?: unknown }).sessionId === "string" &&
-      typeof (parsed as { reconnectSecret?: unknown }).reconnectSecret ===
-        "string"
+      isRecord(parsed) &&
+      typeof parsed.sessionId === "string" &&
+      typeof parsed.reconnectSecret === "string"
     ) {
       return {
-        sessionId: (parsed as { sessionId: string }).sessionId,
-        reconnectSecret: (parsed as { reconnectSecret: string }).reconnectSecret,
+        sessionId: parsed.sessionId,
+        reconnectSecret: parsed.reconnectSecret,
       };
     }
   } catch {
-    /* ignore */
+    /* ignore invalid state */
   }
   return undefined;
 }
@@ -101,235 +91,531 @@ function clearPersistedSessionState(path: string): void {
   rmSync(path, { force: true });
 }
 
-async function writeFramedEnvelope(stdin: Writable, envelope: Envelope): Promise<void> {
-  const bodyBuf = Buffer.from(JSON.stringify(envelope), "utf8");
-  if (bodyBuf.length > MAX_FRAME_BODY_BYTES) {
-    console.error(
-      JSON.stringify({ event: "adapter_codex_downstream_frame_too_large" }),
-    );
+function isAlreadyInSpaceError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("already_in_space");
+}
+
+function loadPersistedThreadState(path: string): PersistedThreadState {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (!isRecord(parsed) || !isRecord(parsed.spaces)) {
+      return { spaces: {} };
+    }
+    const spaces: PersistedThreadState["spaces"] = {};
+    for (const [spaceId, value] of Object.entries(parsed.spaces)) {
+      if (isRecord(value) && typeof value.threadId === "string") {
+        spaces[spaceId] = { threadId: value.threadId };
+      }
+    }
+    return { spaces };
+  } catch {
+    return { spaces: {} };
+  }
+}
+
+function persistThreadState(path: string, state: PersistedThreadState): void {
+  mkdirSync(resolveAgentTalkieDataDir(), { recursive: true });
+  writeFileSync(path, JSON.stringify(state), "utf8");
+}
+
+function parseExtraArgs(): string[] {
+  const argsJson = process.env.TALKIE_CODEX_ARGS_JSON;
+  if (argsJson === undefined || argsJson.trim() === "") {
+    return [];
+  }
+  const parsed = JSON.parse(argsJson) as unknown;
+  if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
+    throw new Error("TALKIE_CODEX_ARGS_JSON must be a JSON array of strings");
+  }
+  return [...parsed];
+}
+
+function getThreadIdForSpace(
+  state: PersistedThreadState,
+  spaceId: string,
+): string | undefined {
+  return state.spaces[spaceId]?.threadId;
+}
+
+function setThreadIdForSpace(
+  state: PersistedThreadState,
+  path: string,
+  spaceId: string,
+  threadId: string,
+): void {
+  const current = state.spaces[spaceId]?.threadId;
+  if (current === threadId) {
     return;
   }
-  const header = Buffer.from(
-    `Content-Length: ${bodyBuf.length}\r\n\r\n`,
-    "utf8",
-  );
-  const chunk = Buffer.concat([header, bodyBuf]);
-  const ok = stdin.write(chunk);
-  if (!ok) {
-    await new Promise<void>((resolve) => stdin.once("drain", resolve));
+  state.spaces[spaceId] = { threadId };
+  persistThreadState(path, state);
+}
+
+function shouldHandleConversation(
+  envelope: Envelope,
+  registeredSessionId: string,
+): envelope is Envelope & {
+  kind: "conversation";
+  type: "chat.message";
+  payload: { text: string };
+  spaceId: string;
+} {
+  if (
+    envelope.kind !== "conversation" ||
+    envelope.type !== "chat.message" ||
+    envelope.sessionId === registeredSessionId
+  ) {
+    return false;
   }
+  if (envelope.to !== undefined && envelope.to !== registeredSessionId) {
+    return false;
+  }
+  if (typeof envelope.spaceId !== "string" || envelope.spaceId === "") {
+    return false;
+  }
+  const payload = envelope.payload as { text?: unknown } | undefined;
+  return typeof payload?.text === "string" && payload.text.trim() !== "";
+}
+
+function buildCodexArgs(
+  prompt: string,
+  extraArgs: string[],
+  threadId?: string,
+): string[] {
+  if (threadId) {
+    return ["exec", "--json", ...extraArgs, "resume", threadId, prompt];
+  }
+  return ["exec", "--json", ...extraArgs, prompt];
+}
+
+function extractTextChunks(content: unknown): string[] {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  const chunks: string[] = [];
+  for (const item of content) {
+    if (!isRecord(item) || typeof item.text !== "string") {
+      continue;
+    }
+    if (typeof item.type === "string" && !item.type.toLowerCase().includes("text")) {
+      continue;
+    }
+    chunks.push(item.text);
+  }
+  return chunks;
+}
+
+function extractAgentMessageText(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  if (
+    typeof value.type === "string" &&
+    value.type !== "agent_message" &&
+    value.type !== "assistant_message" &&
+    value.type !== "message"
+  ) {
+    const nestedAgentMessage = extractAgentMessageText(value.agent_message);
+    if (nestedAgentMessage) {
+      return nestedAgentMessage;
+    }
+  }
+
+  if (typeof value.text === "string") {
+    const direct = normalizeText(value.text);
+    if (direct) {
+      return direct;
+    }
+  }
+
+  const contentText = normalizeText(extractTextChunks(value.content).join(""));
+  if (contentText) {
+    return contentText;
+  }
+
+  return extractAgentMessageText(value.message);
+}
+
+function parseJsonLine(line: string): unknown | undefined {
+  const trimmed = line.trim();
+  if (trimmed === "") {
+    return undefined;
+  }
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readJsonLines(
+  stream: NodeJS.ReadableStream | null | undefined,
+  onEvent: (event: unknown) => void,
+): Promise<void> {
+  if (!stream) {
+    return;
+  }
+  let carry = "";
+  for await (const chunk of stream) {
+    carry += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+    const lines = carry.split(/\r?\n/);
+    carry = lines.pop() ?? "";
+    for (const line of lines) {
+      const parsed = parseJsonLine(line);
+      if (parsed !== undefined) {
+        onEvent(parsed);
+      }
+    }
+  }
+  const trailing = parseJsonLine(carry);
+  if (trailing !== undefined) {
+    onEvent(trailing);
+  }
+}
+
+async function readStderrLines(
+  stream: NodeJS.ReadableStream | null | undefined,
+  onLine: (line: string) => void,
+): Promise<void> {
+  if (!stream) {
+    return;
+  }
+  let carry = "";
+  for await (const chunk of stream) {
+    carry += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+    const lines = carry.split(/\r?\n/);
+    carry = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed !== "") {
+        onLine(trimmed);
+      }
+    }
+  }
+  const trailing = carry.trim();
+  if (trailing !== "") {
+    onLine(trailing);
+  }
+}
+
+function waitForChild(child: ChildProcess): Promise<SpawnResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: SpawnResult) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(result);
+    };
+    child.once("error", (error) => {
+      finish({ exitCode: null, signal: null, error });
+    });
+    child.once("exit", (exitCode, signal) => {
+      finish({ exitCode, signal });
+    });
+  });
+}
+
+function waitForAbort(signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    return new Promise(() => {});
+  }
+  if (signal.aborted) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+}
+
+function sendBlockedMetadata(
+  client: TalkieSessionClient,
+  sessionId: string,
+  spaceId: string,
+  blockedReason: string,
+): void {
+  client.sendEnvelope({
+    version: 1,
+    id: randomUUID(),
+    sessionId,
+    kind: "control",
+    type: "metadata.patch",
+    spaceId,
+    payload: {
+      namespace: "status",
+      patch: {
+        progress: "blocked",
+        blockedReason: blockedReason.slice(0, 512),
+      },
+    },
+  });
 }
 
 export async function runCodexAdapter(opts?: {
   spawn?: typeof defaultSpawn;
   ensureRelay?: EnsureRelayRunning;
   TalkieSessionClient?: typeof TalkieSessionClient;
+  signal?: AbortSignal;
+  onReady?: (state: { sessionId: string }) => void;
 }): Promise<void> {
   const spawnFn = opts?.spawn ?? defaultSpawn;
   const ensureRelay = opts?.ensureRelay ?? defaultEnsureRelay;
   const ClientClass = opts?.TalkieSessionClient ?? TalkieSessionClient;
 
-  let argv: string[] = [];
-  const argsJson = process.env.TALKIE_CODEX_ARGS_JSON;
-  if (argsJson !== undefined && argsJson !== "") {
-    try {
-      const parsed = JSON.parse(argsJson) as unknown;
-      if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === "string")) {
-        throw new Error("TALKIE_CODEX_ARGS_JSON must be a JSON array of strings");
-      }
-      argv = [...parsed];
-    } catch (e) {
-      process.stderr.write(
-        `[adapter-codex] invalid TALKIE_CODEX_ARGS_JSON: ${e instanceof Error ? e.message : String(e)}\n`,
-      );
-      process.exitCode = 1;
-      return;
-    }
+  let extraArgs: string[];
+  try {
+    extraArgs = parseExtraArgs();
+  } catch (error) {
+    process.stderr.write(
+      `[adapter-codex] invalid TALKIE_CODEX_ARGS_JSON: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode = 1;
+    return;
   }
 
   const relay = await ensureRelay({});
-  const statePath = codexSessionStatePath();
+  const sessionStatePath = resolveSessionStatePath();
+  const threadStatePath = resolveThreadStatePath();
+  const threadState = loadPersistedThreadState(threadStatePath);
   const sessionInput = {
     displayName: process.env.TALKIE_CODEX_DISPLAY_NAME ?? "codex-adapter",
     runtime: process.env.TALKIE_CODEX_RUNTIME ?? "adapter-codex",
     workspaceLabel: process.env.TALKIE_CODEX_WORKSPACE ?? ".",
     isHuman: false,
   } as const;
+
   const connectClient = async (): Promise<TalkieSessionClient> => {
-    const next = new ClientClass({
+    const client = new ClientClass({
       url: `ws://127.0.0.1:${relay.port}`,
     });
-    await next.connect();
-    return next;
+    await client.connect();
+    return client;
+  };
+
+  const registerNewSession = async (client: TalkieSessionClient): Promise<string> => {
+    const reg = await client.registerSession(sessionInput);
+    persistSessionState(sessionStatePath, {
+      sessionId: reg.sessionId,
+      reconnectSecret: reg.reconnectSecret,
+    });
+    return reg.sessionId;
+  };
+
+  const connectAndRegisterNewSession = async (): Promise<{
+    client: TalkieSessionClient;
+    sessionId: string;
+  }> => {
+    const freshClient = await connectClient();
+    return {
+      client: freshClient,
+      sessionId: await registerNewSession(freshClient),
+    };
   };
 
   let client = await connectClient();
   let registeredSessionId: string;
-  const persisted = loadPersistedSessionState(statePath);
-  if (persisted) {
+  let resumedPersistedSession = false;
+  const persistedSession = loadPersistedSessionState(sessionStatePath);
+  if (persistedSession) {
     try {
-      const resumed = await client.resume(persisted);
-      persistSessionState(statePath, resumed);
+      const resumed = await client.resume(persistedSession);
+      persistSessionState(sessionStatePath, resumed);
       registeredSessionId = resumed.sessionId;
+      resumedPersistedSession = true;
     } catch {
-      clearPersistedSessionState(statePath);
+      clearPersistedSessionState(sessionStatePath);
       client.close();
-      client = await connectClient();
-      const reg = await client.registerSession(sessionInput);
-      persistSessionState(statePath, {
-        sessionId: reg.sessionId,
-        reconnectSecret: reg.reconnectSecret,
-      });
-      registeredSessionId = reg.sessionId;
+      const fresh = await connectAndRegisterNewSession();
+      client = fresh.client;
+      registeredSessionId = fresh.sessionId;
     }
   } else {
-    const reg = await client.registerSession(sessionInput);
-    persistSessionState(statePath, {
-      sessionId: reg.sessionId,
-      reconnectSecret: reg.reconnectSecret,
-    });
-    registeredSessionId = reg.sessionId;
+    registeredSessionId = await registerNewSession(client);
   }
 
-  let activeSpaceId: string | null = null;
-  const joinSlug = process.env.TALKIE_CODEX_JOIN_SLUG?.trim();
-  if (joinSlug) {
-    const joined = await client.joinSpace({
-      slug: joinSlug,
-      idempotencyKey: randomUUID(),
-    });
-    activeSpaceId = joined.spaceId;
+  if (process.env.TALKIE_CODEX_JOIN_SLUG?.trim()) {
+    const slug = process.env.TALKIE_CODEX_JOIN_SLUG.trim();
+    try {
+      await client.joinSpace({
+        slug,
+        idempotencyKey: randomUUID(),
+      });
+    } catch (error) {
+      if (!resumedPersistedSession || !isAlreadyInSpaceError(error)) {
+        throw error;
+      }
+      clearPersistedSessionState(sessionStatePath);
+      client.close();
+      const fresh = await connectAndRegisterNewSession();
+      client = fresh.client;
+      registeredSessionId = fresh.sessionId;
+      await client.joinSpace({
+        slug,
+        idempotencyKey: randomUUID(),
+      });
+    }
   } else {
-    const sid = process.env.TALKIE_CODEX_SPACE_ID?.trim();
-    if (sid && looksLikeUuid(sid)) {
-      activeSpaceId = sid;
+    const fallbackSpaceId = process.env.TALKIE_CODEX_SPACE_ID?.trim();
+    if (fallbackSpaceId && !looksLikeUuid(fallbackSpaceId)) {
+      process.stderr.write(
+        `[adapter-codex] ignoring invalid TALKIE_CODEX_SPACE_ID: ${fallbackSpaceId}\n`,
+      );
     }
   }
 
   const cmd = process.env.TALKIE_CODEX_COMMAND ?? "codex";
-  const child = spawnFn(cmd, argv, { stdio: ["pipe", "pipe", "pipe"] }) as ChildProcess;
+  const activeTurns = new Map<string, TurnRun>();
+  let shuttingDown = false;
 
-  const stdin = child.stdin!;
-  const queue = createBoundedQueue<Envelope>(100);
-  let draining = false;
-
-  const kickDrain = (): void => {
-    if (draining) {
+  const startTurn = (envelope: Envelope): void => {
+    if (!shouldHandleConversation(envelope, registeredSessionId)) {
       return;
     }
-    draining = true;
-    setImmediate(() => {
-      void (async () => {
-        try {
-          while (queue.length > 0) {
-            const env = queue.shift();
-            if (env) {
-              await writeFramedEnvelope(stdin, env);
-            }
-          }
-        } finally {
-          draining = false;
-          if (queue.length > 0) {
-            kickDrain();
-          }
-        }
-      })();
-    });
-  };
-
-  client.onEnvelope((envelope) => {
-    if (!shouldForwardToChild(envelope, registeredSessionId)) {
+    if (shuttingDown) {
       return;
     }
-    queue.enqueue(envelope, () => {
-      process.stderr.write(
-        `${JSON.stringify({
-          level: "warn",
-          event: "adapter_codex_stdin_backpressure_drop",
-        })}\n`,
+
+    const prompt = envelope.payload.text.trim();
+    const spaceId = envelope.spaceId;
+    if (activeTurns.has(spaceId)) {
+      sendBlockedMetadata(
+        client,
+        registeredSessionId,
+        spaceId,
+        "Codex turn already running for this space",
       );
-    });
-    kickDrain();
-  });
-
-  let lastBlockedSentMs = 0;
-  let noSpaceWarned = false;
-  let stderrCarry = "";
-
-  const stderrLoop = async (): Promise<void> => {
-    const err = child.stderr;
-    if (!err) {
       return;
     }
-    for await (const chunk of err) {
-      const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-      stderrCarry += text;
-      const parts = stderrCarry.split("\n");
-      stderrCarry = parts.pop() ?? "";
-      for (const line of parts) {
-        if (line === "") {
-          continue;
+
+    const threadId = getThreadIdForSpace(threadState, spaceId);
+    const child = spawnFn(cmd, buildCodexArgs(prompt, extraArgs, threadId), {
+      stdio: ["ignore", "pipe", "pipe"],
+    }) as ChildProcess;
+
+    const blockedLines = new Set<string>();
+    let latestReply: string | undefined;
+    let turnCompleted = false;
+    let reportedJsonError = false;
+
+    const promise = (async () => {
+      const stdoutPromise = readJsonLines(child.stdout, (event) => {
+        if (!isRecord(event) || typeof event.type !== "string") {
+          return;
         }
-        if (!BLOCKED_LINE_RE.test(line)) {
-          continue;
-        }
-        const now = Date.now();
-        if (now - lastBlockedSentMs < 5000) {
-          continue;
-        }
-        if (activeSpaceId === null) {
-          if (!noSpaceWarned) {
-            noSpaceWarned = true;
-            process.stderr.write(
-              `${JSON.stringify({
-                level: "warn",
-                event: "adapter_codex_no_space",
-              })}\n`,
+
+        if (event.type === "error") {
+          if (!reportedJsonError && typeof event.message === "string") {
+            reportedJsonError = true;
+            sendBlockedMetadata(
+              client,
+              registeredSessionId,
+              spaceId,
+              `Codex error: ${event.message}`,
             );
           }
-          continue;
+          return;
         }
-        lastBlockedSentMs = now;
+
+        if (event.type === "thread.started" && typeof event.thread_id === "string") {
+          setThreadIdForSpace(threadState, threadStatePath, spaceId, event.thread_id);
+          return;
+        }
+
+        if (event.type === "item.completed") {
+          if (turnCompleted) {
+            return;
+          }
+          const reply = extractAgentMessageText(event.item);
+          if (reply) {
+            latestReply = reply;
+          }
+          return;
+        }
+
+        if (event.type === "turn.completed") {
+          turnCompleted = true;
+        }
+      });
+
+      const stderrPromise = readStderrLines(child.stderr, (line) => {
+        if (!BLOCKED_LINE_RE.test(line)) {
+          return;
+        }
+        if (blockedLines.has(line)) {
+          return;
+        }
+        blockedLines.add(line);
+        sendBlockedMetadata(client, registeredSessionId, spaceId, line);
+      });
+
+      const [result] = await Promise.all([
+        waitForChild(child),
+        stdoutPromise,
+        stderrPromise,
+      ]);
+
+      if (shuttingDown) {
+        return;
+      }
+
+      if (turnCompleted && latestReply) {
         client.sendEnvelope({
           version: 1,
           id: randomUUID(),
           sessionId: registeredSessionId,
-          kind: "control",
-          type: "metadata.patch",
-          spaceId: activeSpaceId,
-          idempotencyKey: randomUUID(),
-          payload: {
-            namespace: "status",
-            patch: {
-              progress: "blocked",
-              blockedReason: line.slice(0, 512),
-            },
-          },
+          kind: "conversation",
+          type: "chat.message",
+          spaceId,
+          payload: { text: latestReply },
         });
+        return;
       }
-    }
+
+      if (result.error) {
+        process.stderr.write(
+          `[adapter-codex] failed to start Codex: ${result.error.message}\n`,
+        );
+        return;
+      }
+
+      if (result.exitCode !== null && result.exitCode !== 0) {
+        process.stderr.write(
+          `[adapter-codex] Codex exited with code ${result.exitCode} for space ${spaceId}\n`,
+        );
+        return;
+      }
+
+      if (result.signal !== null) {
+        process.stderr.write(
+          `[adapter-codex] Codex exited via signal ${result.signal} for space ${spaceId}\n`,
+        );
+      }
+    })().finally(() => {
+      activeTurns.delete(spaceId);
+    });
+
+    activeTurns.set(spaceId, { child, promise });
   };
 
-  const stdoutLoop = async (): Promise<void> => {
-    const out = child.stdout;
-    if (!out) {
-      return;
-    }
-    const reader = new ContentLengthFrameReader(out);
-    for await (const obj of reader) {
-      const parsed = safeParseEnvelope(obj);
-      if (parsed.success) {
-        client.sendEnvelope(parsed.data);
+  client.onEnvelope(startTurn);
+  opts?.onReady?.({ sessionId: registeredSessionId });
+
+  try {
+    await waitForAbort(opts?.signal);
+  } finally {
+    shuttingDown = true;
+    for (const turn of activeTurns.values()) {
+      try {
+        turn.child?.kill("SIGTERM");
+      } catch {
+        /* ignore */
       }
     }
-  };
-
-  await Promise.all([stdoutLoop(), stderrLoop(), waitChildExit(child)]);
-  client.close();
-}
-
-function waitChildExit(child: ChildProcess): Promise<void> {
-  return new Promise((resolve) => {
-    child.once("exit", () => resolve());
-  });
+    await Promise.allSettled(
+      [...activeTurns.values()].map((turn) => turn.promise),
+    );
+    client.close();
+  }
 }

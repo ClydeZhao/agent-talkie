@@ -115,6 +115,7 @@ export async function ensureRelayRunning(
   const daemonEntry = require.resolve("@agent-talkie/relay/daemon");
   const child = fork(daemonEntry, [], {
     env: { ...process.env, AGENT_TALKIE_DATA_DIR: dataDir },
+    detached: true,
     // Do not inherit parent stdout/stderr: a piped parent (e.g. spawnSync in tests)
     // would deadlock while the daemon keeps those descriptors open.
     stdio: ["ignore", "ignore", "ignore", "ipc"],

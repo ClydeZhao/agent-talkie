@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ensureRelayRunning,
   getRelayStatus,
@@ -10,8 +10,20 @@ import {
 
 describe("ensureRelayRunning", () => {
   let dataDir: string | undefined;
+  let previousRelayPort: string | undefined;
+
+  beforeEach(() => {
+    previousRelayPort = process.env.AGENT_TALKIE_RELAY_PORT;
+    process.env.AGENT_TALKIE_RELAY_PORT = "0";
+  });
 
   afterEach(async () => {
+    if (previousRelayPort === undefined) {
+      delete process.env.AGENT_TALKIE_RELAY_PORT;
+    } else {
+      process.env.AGENT_TALKIE_RELAY_PORT = previousRelayPort;
+    }
+    previousRelayPort = undefined;
     if (dataDir !== undefined) {
       await stopRelay({ dataDir }).catch(() => {});
       try {

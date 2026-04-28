@@ -98,6 +98,31 @@ describe("relay health and idle shutdown", () => {
     await srv.close();
   });
 
+  it("allows dashboard origins to fetch local HTTP APIs", async () => {
+    const srv = await createRelayServer({
+      dbPath: testDbPath(),
+      port: 0,
+      relayGenerationToken: "x",
+    });
+    const base = wsUrlToHttpBase(srv.url);
+    const res = await fetch(`${base}/__agent-talkie/v1/oversight/spaces`, {
+      headers: { Origin: "http://127.0.0.1:5173" },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+
+    const preflight = await fetch(
+      `${base}/__agent-talkie/v1/oversight/spaces`,
+      {
+        method: "OPTIONS",
+        headers: { Origin: "http://127.0.0.1:5173" },
+      },
+    );
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    await srv.close();
+  });
+
   it("fires onIdleShutdown after last WebSocket closes and grace elapses", async () => {
     let idleFired = false;
     const srv = await createRelayServer({

@@ -257,6 +257,12 @@ void (async () => {
     let selfSessionId: string;
     const resumed = await bridge.resumeFromStorage();
     if (!resumed) {
+      if (
+        bridge.getConnectionHealth() !== "connected" ||
+        bridge.getNegotiatedEnvelopeVersion() === null
+      ) {
+        await bridge.connect({ autoReconnect: true });
+      }
       const reg = await bridge.registerNewSession({
         displayName: "Human",
         runtime: "browser",
