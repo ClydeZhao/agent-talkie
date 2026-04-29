@@ -1,0 +1,29 @@
+{
+  "name": "agent-talkie",
+  "version": "0.1.0-alpha.0",
+  "description": "Local-first collaboration layer for coding agent runtimes.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "bin": {
+    "agent-talkie": "bin/agent-talkie.js",
+    "talkie": "bin/talkie.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "tag": "alpha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ClydeZhao/agent-talkie.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ClydeZhao/agent-talkie/issues"
+  },
+  "homepage": "https://github.com/ClydeZhao/agent-talkie#readme"
+}
