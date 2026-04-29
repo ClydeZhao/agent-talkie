@@ -168,7 +168,7 @@ export class BrowserSessionBridge {
     ws.send(JSON.stringify(envelope));
   }
 
-  /** Tracks the envelope for error-bar Retry (D-10/D-11); same object reference on retry. */
+  /** Tracks the envelope for error-bar Retry; same object reference on retry. */
   sendConversationWithRetryTracking(envelope: Envelope): void {
     if (envelope.kind !== "conversation") {
       throw new Error("sendConversationWithRetryTracking: not_conversation");

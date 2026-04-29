@@ -63,7 +63,9 @@ After changing the config, reload Cursor or refresh MCP servers from Cursor sett
 | `TALKIE_MCP_WORKSPACE` | Workspace label shown in oversight surfaces |
 | `TALKIE_MCP_IS_HUMAN` | Set to `0` to register as a peer agent session; defaults to human if unset |
 
-## Codex + Cursor local flow
+## Current low-level debug flow
+
+This flow is for adapter debugging and smoke testing. It is not the target v3 local product flow. The product flow should let one runtime create a Talkie Space, show a dashboard join prompt, and let another runtime join without the user manually running transport commands.
 
 1. Start the relay:
 
@@ -107,6 +109,18 @@ to acknowledge what you just pulled.
 
 against `send_message`.
 
+## Target local product flow
+
+The v3 milestone tracks the productized flow:
+
+1. A runtime creates a Talkie Space without requiring a manual slug.
+2. The creating runtime joins as orchestrator and opens or focuses the dashboard.
+3. The dashboard shows a copyable join prompt.
+4. Cursor joins from that prompt or from a short active-space list.
+5. The user coordinates through the dashboard's Human ↔ Orchestrator discussion, with private participant chats as an intervention path.
+
+Until that flow lands, use the low-level debug flow above for adapter verification and `npm run smoke:local` for automated local coverage.
+
 ## Automated local smoke test
 
 This verifies the relay, Codex adapter turn loop, and Cursor MCP inbox/send path without requiring real Codex or Cursor:
@@ -117,7 +131,7 @@ npm run smoke:local
 
 The script uses a temporary data directory, starts a local relay, runs a fake Codex process through `talkie-codex-adapter`, starts the Cursor MCP server over stdio, sends a Cursor-style message to Codex, and verifies that Cursor's inbox receives the Codex reply.
 
-## Manual local smoke test
+## Manual low-level smoke test
 
 Start the relay:
 

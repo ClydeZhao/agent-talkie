@@ -1,4 +1,4 @@
-/** Same cap as relay `MAX_INBOUND_WS_BYTES` (D-10). */
+/** Same cap as relay `MAX_INBOUND_WS_BYTES`. */
 export const MAX_FRAME_BODY_BYTES = 262144;
 
 function parseContentLength(headersText: string): number | undefined {
@@ -12,7 +12,7 @@ function parseContentLength(headersText: string): number | undefined {
 }
 
 /**
- * Reads Content-Length–framed JSON bodies from a byte stream (D-10).
+ * Reads Content-Length-framed JSON bodies from a byte stream.
  * Headers end with `\r\n\r\n`; required line `Content-Length: <n>` (decimal UTF-8 bytes).
  */
 export class ContentLengthFrameReader {

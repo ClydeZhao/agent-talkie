@@ -2,4 +2,22 @@ node_modules/
 dist/
 dist-app/
 *.tsbuildinfo
-.codex/
+.env
+.env.*
+!.env.example
+
+# Local verification artifacts
+.playwright-mcp/
+output/
+test-results/
+test_artifacts/
+.agents/local/
+
+# Keep repo-local Codex/Cursor harness files intentional.
+.codex/*
+!.codex/skills/
+!.codex/skills/**
+.cursor/*
+!.cursor/mcp.json
+!.cursor/skills/
+!.cursor/skills/**
