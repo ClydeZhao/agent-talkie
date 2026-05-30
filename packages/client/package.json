@@ -1,0 +1,33 @@
+{
+  "name": "@agent-talkie/client",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "pretest": "npm run build -w @agent-talkie/protocol",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agent-talkie/protocol": "0.0.0",
+    "ws": "^8.20.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "uuid": "^11.1.0",
+    "vitest": "^4.1.4"
+  }
+}

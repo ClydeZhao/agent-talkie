@@ -1,62 +1,91 @@
 # agent-talkie 里程碑
 
-状态：当前基线  
-最后更新：2026-04-08
+状态：当前方向
+最后更新：2026-05-31
 
-这份文档用于跟踪 rollout 的推进顺序。[PRD.md](PRD.md) 定义最终产品形态，这份文档定义哪些部分先做。
+这份文档只跟踪长期有用的交付方向。`PRD.md` 定义产品模式，`docs/architecture.md` 定义实现架构和不变量，当前交付目标放在 `docs/milestones/`。
 
-## 里程碑 1
+## 当前目标：Local Orchestrator Dashboard
 
-证明同一用户、同一台机器上的跨 runtime agent session，可以以一种减少人类中继劳动的方式协作。
+目标：把已经验证的 Codex CLI + Claude Code 本地协作闭环产品化成一个人类可直接操作的 orchestrator-first dashboard。用户打开 dashboard 后，应能看懂当前 space、orchestrator、runtime 可用性、默认讨论、private intervention 和失败状态，而不是阅读 relay/debug console。
+
+详细定义：`docs/milestones/local-orchestrator-dashboard.md`
 
 范围：
 
-- `Codex CLI`
-- `Claude Code`
-- 一个供同一用户、同一台机器上的运行中 session 使用的共享协作空间
-- 命名 session
-- orchestrator 指派
-- session-to-session 直接通信
-- 多轮协作
-- 协作元数据可见
-- 人类可以编辑协作元数据
-- peer-first 的问题解决方式
-- 由 orchestrator 负责的人类升级
-- 看见那些需要用户关注的原生中断
-- 本地 session 的显式 opt-in 参与
-- 一个用于观察和引导协作的 Web UI
+- dashboard 默认 Human -> Orchestrator 讨论路径清晰、可投递、可观察
+- roster 变成 runtime 可用性和介入入口，而不是单纯 session 列表
+- private intervention 对选中 participant 可投递，或明确阻止不可响应目标
+- transcript 默认可读，raw protocol payload 退到显式 debug affordance
+- active-space list 不把空、stale、无 orchestrator 或全员不可响应的 space 呈现成正常可聊
+- dashboard reload 不制造重复 active human participant
 
-成功标准：
+当前不追：
 
-- 一个用户可以在同一台机器上运行来自不同工具的 session
-- 这些 session 可以加入同一个协作空间
-- 一个 session 可以直接要求另一个 session 协作
-- 大多数后续问题都能在没有人工复制粘贴的情况下解决
-- 人类只在确实需要判断或原生批准时介入
+- Cursor App 进入同一个最终 gate
+- 多机、多人、远程 relay trust
+- TLS、tunnel、access token 或跨网络 invite
+- hosted execution
+- 通用项目管理 harness
+- 集中化各 runtime 的私有上下文
+- 把 dashboard 变成任务管理系统或人工消息搬运台
 
-## 里程碑 2
+## 已交付基线
 
-把协作模型从单用户单机扩展到团队共享空间。
+### Codex CLI + Claude Code 最小协作闭环
 
-重点：
+状态：已验证，2026-05-30
 
-- 多用户协作空间
-- 跨用户、跨机器的显式信任与邀请模型
-- 团队成员的 bring-your-own-agent 参与方式
-- 在不压平私有本地上下文的前提下提供共享可见性
-- 更好支持跨团队 feature 交付与联调工作
+核心结果：
 
-## 里程碑 3
+- Codex CLI 和 Claude Code 可以在同一本地 relay 上加入同一个 Talkie Space。
+- 两个 runtime 能接收后续消息、回复、ack，并保留自己的原生上下文。
+- runtime 之间可以直接讨论；人类不需要手动复制消息充当中转。
+- dashboard 可以观察 roster、transcript、orchestrator/default discussion 和 private intervention 的协作状态。
+- 失败时能看见 runtime 没有接收、没有回复、离线或需要人工原生处理。
 
-探索 harness 应该在多大程度上保持为用户定义，以及在多大程度上内建到产品里。
+详细定义：`docs/milestones/local-codex-claude-loop.md`
 
-重点：
+### v2.0 Web Dashboard
 
-- 常见 harness pattern 是否应继续放在 `AGENTS.md` 和 skills 里
-- 产品是否应为常见协作流程提供内建 harness 默认值
-- 在不过度扩张核心协作层的前提下，更丰富的信息交换应该如何成立
-- 初始工具集之外的更多 runtime 集成
+状态：已交付，2026-04-22
 
-## 说明
+核心结果：
 
-这些里程碑是规划工具，不是产品边界。PRD 应该始终比当前里程碑更宽。
+- `@agent-talkie/dashboard` 已接入 relay WebSocket，并支持 health、reconnect、catch-up、space picker、roster、transcript、search/filter 和 dashboard send。
+- relay 可在生产路径同源托管 dashboard。
+- `talkie dashboard` 可以确保本地 relay 并打开 dashboard。
+- dashboard 能创建/销毁 space、移除成员、指定/清除 orchestrator，并展示协作 metadata、blocked/attention 状态和 relay error。
+
+遗留问题：
+
+- dashboard 仍偏 relay/debug console，不像面向用户的 orchestrator-first 控制台。
+- transcript 默认暴露 raw JSON，普通用户不可读。
+- dashboard reload 和 browser tab 生命周期会制造重复或 stale human participant。
+- dashboard invite/create/join flow 还不是 runtime-native 产品流程。
+
+### v1.0 MVP
+
+状态：已交付，2026-04-15，2026-04-17 稳定化
+
+核心结果：
+
+- versioned message envelope、Zod validation、JSON Schema export、handshake 版本协商。
+- SQLite persistence：sessions、spaces、memberships、transcript、idempotency、collaboration metadata。
+- WebSocket relay：join/leave、direct routing、multi-turn conversation、catch-up、idempotency、membership gating。
+- supervisor daemon lifecycle：本地 relay 可自动启动，生命周期不依赖第一个 participant。
+- CLI oversight：status、who、transcript、watch。
+- adapter ingress：stdio reference、Codex adapter、Cursor MCP adapter。
+- orchestrator routing、metadata.patch、space ownership 和 owner-gated controls。
+
+## 后续里程碑方向
+
+Local Orchestrator Dashboard 通过后，再重新评估是否推进以下方向：
+
+- Cursor App 作为第三个本地 runtime 加入同一闭环
+- 多用户、多机器、remote relay 的显式信任与邀请模型
+- 团队 bring-your-own-agent 协作空间
+- 更丰富的 runtime 集成
+- 哪些 harness pattern 应保留为用户定义，哪些应成为产品内建默认
+
+这些方向不能反向污染当前目标。现在先把已经验证的本地 runtime loop 变成用户能稳定理解和操作的 dashboard 产品面。

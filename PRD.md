@@ -1,7 +1,7 @@
 # agent-talkie PRD
 
 Status: Current  
-Last updated: 2026-04-08
+Last updated: 2026-05-30
 
 A collaboration layer for coding agents that already run in different products.
 
@@ -67,9 +67,16 @@ If the system only supports one-shot dispatch, it becomes a weak task queue and 
 
 The unit of collaboration is a session, not a runtime brand.
 
-Users do not collaborate with abstract entities like "Claude" or "Codex". They collaborate with concrete running sessions that have a current workspace, a current task, and a distinct identity.
+Users do not collaborate with abstract entities like "Claude" or "Codex". They collaborate with concrete running sessions that have a current native context, a current task, and a distinct identity.
 
 This matters because users may run several sessions from the same runtime at once.
+
+Runtime brand does not determine collaboration role. A Codex, Cursor, Claude
+Code, or other native session may act as orchestrator or worker. Residency is
+also independent of role: an orchestrator can be pull-based or long-running, and
+a worker can be pull-based or long-running. The collaboration layer should
+represent the actual session behavior instead of inferring capability from the
+tool name.
 
 ### Conversation first
 
@@ -110,6 +117,11 @@ Human involvement should happen only when:
 The orchestrator is not required to relay every message, but it should own the outcome for the collaboration space and proactively drive the team toward it.
 
 Its job is not just to dispatch work. It should keep momentum, follow up on stalled threads, synthesize the current state, and decide when the human needs to step in.
+
+Orchestrator is a role assigned inside a space, not a special runtime category.
+Any participating session with enough tool-loop capability can be designated as
+the orchestrator, and the role can move when the collaboration needs a different
+lead.
 
 It is the main control point for:
 
@@ -175,7 +187,7 @@ Each running session joins a shared collaboration space. When it joins, it becom
 
 - a stable identity
 - a human-usable name
-- visible runtime and workspace context
+- visible runtime and project-label context
 - lightweight collaboration metadata
 
 Users should address sessions by name, not by runtime brand.
@@ -190,13 +202,27 @@ At the collaboration-layer level, the platform should carry messages and collabo
 
 A collaboration space may also include several humans, each with their own local sessions. The point is not just "many agents for one person." It is "many humans, each bringing their own agents, still collaborating as one team."
 
+### Default human experience
+
+The default human experience should feel like talking to a team lead, not operating a message bus.
+
+When a collaboration space has an orchestrator, the primary human-visible discussion should be the conversation between the human and that orchestrator. The orchestrator owns coordination and should report progress, questions, and blockers back to the human in a consolidated way. Other sessions remain visible and addressable, but they should not become the main thing the human has to manage.
+
+A human may still open a direct private conversation with a specific session. This is an intervention path for clarification, debugging, or micro-management. It should not require the human to think in terms of transport fields such as routing targets. The product should present it as a private conversation with that participant.
+
+Session-to-session conversations are also first-class. Workers should be able to ask each other questions, resolve issues, and report meaningful state back to the orchestrator. The orchestrator does not need to relay every byte, but it should own the state of the collaboration and decide what the human needs to see.
+
+Collaboration history should be legible as conversations and system events. Raw envelopes, payload JSON, routing fields, and transcript diagnostics may exist for debugging, but they should not be the default human-facing view.
+
+Creating a collaboration space should not require the human to invent a name up front. The system may assign a human-usable label and keep an active list so another runtime can explicitly join the right space through its native interaction model. This preserves explicit participation without forcing the human to manage low-level identifiers.
+
 ## What a session should expose
 
 Each session should expose enough information to be a useful collaborator:
 
 - who it is
 - what runtime it belongs to
-- what workspace it is currently operating in
+- what workspace label or project label it exposes
 - what role it is playing
 - what it is currently focused on
 - how its work is progressing
@@ -240,7 +266,7 @@ The product should support:
 - collaboration metadata that belongs to the collaboration layer rather than the worker workspace
 - enough workspace awareness to make collaboration meaningful
 - many sessions working in parallel inside the same collaboration space
-- explicit opt-in participation for sessions and invite-based channel membership
+- explicit opt-in participation for sessions and invite-based space membership
 - a local-first trust model where local context stays on the user's machine unless deliberately shared
 
 ## Representative examples
@@ -261,7 +287,7 @@ A worker session needs information. Another session answers, and the worker cont
 
 A company is shipping a feature that crosses several teams. One team owns the product surface, another owns the backend service, another owns authentication, and another owns the developer platform or infrastructure needed for rollout. Each team already has local agent sessions working inside its own repo or module.
 
-They join the same feature channel with those sessions. The sessions use the channel to align on the design, clarify ownership boundaries, negotiate interface changes, coordinate implementation order, and prepare integration work. When one team changes an API contract or rollout assumption, the relevant sessions can ask follow-up questions immediately instead of waiting for a human to notice and relay the mismatch.
+They join the same feature collaboration space with those sessions. The sessions use the space to align on the design, clarify ownership boundaries, negotiate interface changes, coordinate implementation order, and prepare integration work. When one team changes an API contract or rollout assumption, the relevant sessions can ask follow-up questions immediately instead of waiting for a human to notice and relay the mismatch.
 
 During integration, the sessions can keep talking across team boundaries: confirming expectations, exchanging the needed code or rollout context through their own tools and harnesses, surfacing blockers, and coordinating fixes. Humans still supervise and make decisions, but they no longer have to serve as the transport layer between teams' agents.
 
@@ -275,13 +301,13 @@ During integration, the sessions can keep talking across team boundaries: confir
 - become a hosted autonomous agent platform
 - become a persistent memory platform for agents
 - replace native client approval, auth, or prompt UX
-- make every visible channel message implicit context for every session
+- make every visible collaboration message implicit context for every session
 - centralize every participant's local context into one hosted system
 
 ## Default decisions
 
 - Session names should be human-usable labels with stable disambiguation when needed. A name may be chosen by the user or proposed by the session, but the system should add a clear disambiguator when collisions exist, such as runtime, owner, or numeric suffix.
-- Workspace visibility should be minimal by default. High-level workspace context such as runtime, repo or workspace label, branch, and current focus may be visible, but local paths and other sensitive details should remain private unless explicitly shared.
+- Workspace-label visibility should be minimal by default. High-level project context such as runtime, repo or workspace label, branch, and current focus may be visible, but local paths and other sensitive details should remain private unless explicitly shared.
 - Metadata upkeep should be hybrid by default. Status-like fields such as activity, blocked state, and last update can be refreshed automatically, while semantic fields such as role, display name, ownership, and declared focus should remain under human control.
 - Human-visible history should default to the shared collaboration timeline and explicitly shared threads. Internal native context, private local state, and anything not sent into the collaboration layer should not be exposed by default.
 

@@ -1,0 +1,33 @@
+node_modules/
+dist/
+dist-app/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+
+# Local verification artifacts
+.playwright-mcp/
+output/
+test-results/
+test_artifacts/
+.agents/local/
+.agent-talkie/
+*.agent-talkie.bak
+.mcp.json
+.playwright-cli/
+
+# Keep repo-local runtime harness files intentional.
+.codex/*
+!.codex/skills/
+!.codex/skills/**
+.cursor/*
+!.cursor/mcp.json
+!.cursor/skills/
+!.cursor/skills/**
+.claude/*
+!.claude/skills/
+!.claude/skills/**
+.codex/skills/**/SKILL.md.agent-talkie.bak
+.cursor/skills/**/SKILL.md.agent-talkie.bak
+.claude/skills/**/SKILL.md.agent-talkie.bak

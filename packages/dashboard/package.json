@@ -1,0 +1,33 @@
+{
+  "name": "@agent-talkie/dashboard",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "files": [
+    "dist",
+    "dist-app"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build:lib": "vite build",
+    "build:app": "vite build --config vite.app.config.ts",
+    "build": "npm run build:lib && npm run build:app",
+    "pretest": "npm run build -w @agent-talkie/protocol",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agent-talkie/protocol": "0.0.0",
+    "@lit-labs/virtualizer": "^2.1.1",
+    "lit": "3.3.2",
+    "minisearch": "^7.2.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "happy-dom": "20.9.0",
+    "typescript": "^5.9.3",
+    "uuid": "^13.0.0",
+    "vite": "8.0.8",
+    "vitest": "^4.1.4"
+  }
+}
