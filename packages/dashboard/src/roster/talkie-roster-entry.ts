@@ -1,7 +1,10 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-import type { RosterRow } from "../store/dashboard-store.js";
+import type {
+  ParticipantProjection,
+  RosterRow,
+} from "../store/dashboard-store.js";
 
 function formatLastSeen(ms: number | null): string {
   if (ms === null) {
@@ -138,6 +141,10 @@ export class TalkieRosterEntry extends LitElement {
       font-size: 11px;
       color: var(--talkie-muted, #8b949e);
     }
+    .presence-label--bad {
+      color: var(--talkie-accent-danger, #f85149);
+      font-weight: 600;
+    }
     .blocked-reason {
       font-size: 11px;
       color: #f87171;
@@ -217,7 +224,7 @@ export class TalkieRosterEntry extends LitElement {
   `;
 
   @property({ type: Object })
-  row: RosterRow | undefined;
+  row: RosterRow | ParticipantProjection | undefined;
 
   @property({ type: Boolean })
   selfIsOwner = false;
@@ -393,7 +400,9 @@ export class TalkieRosterEntry extends LitElement {
                 <span class="progress-dot progress-dot--${prog}"></span>
                 <span class="progress-label">${prog}</span>
               </span>
-	              <span class="presence-label">${r.presenceState}</span>
+	              <span class=${this._availabilityClass(r)}>
+                  ${this._availabilityLabel(r)}
+                </span>
 	              <span class="presence-label last-seen"
 	                >${formatLastSeen(r.lastSeenAtMs)}</span
 	              >
@@ -415,7 +424,7 @@ export class TalkieRosterEntry extends LitElement {
   }
 
   private _progressState(
-    r: RosterRow,
+    r: RosterRow | ParticipantProjection,
   ): "idle" | "working" | "blocked" | "done" {
     const p = r.progress;
     if (
@@ -427,6 +436,24 @@ export class TalkieRosterEntry extends LitElement {
       return p;
     }
     return "idle";
+  }
+
+  private _availabilityLabel(r: RosterRow | ParticipantProjection): string {
+    if ("availability" in r) {
+      return r.availability.label;
+    }
+    return r.presenceState;
+  }
+
+  private _availabilityClass(r: RosterRow | ParticipantProjection): string {
+    if ("availability" in r) {
+      return r.availability.canReceiveLive
+        ? "presence-label"
+        : "presence-label presence-label--bad";
+    }
+    return r.presenceState === "online"
+      ? "presence-label"
+      : "presence-label presence-label--bad";
   }
 
   private _truncFocus(s: string): string {

@@ -34,7 +34,13 @@ export class TalkieTranscript extends LitElement {
       text-transform: uppercase;
       color: var(--talkie-muted, #8b949e);
     }
-    .search-toggle {
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .toolbar-button {
       flex-shrink: 0;
       font-size: 12px;
       font-weight: 600;
@@ -45,7 +51,7 @@ export class TalkieTranscript extends LitElement {
       color: var(--talkie-fg, #e6edf3);
       cursor: pointer;
     }
-    .search-toggle:hover {
+    .toolbar-button:hover {
       border-color: var(--talkie-muted, #8b949e);
     }
     lit-virtualizer {
@@ -91,7 +97,7 @@ export class TalkieTranscript extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    this._prevLen = this.store.getVisibleTranscriptLines().length;
+    this._prevLen = this.store.getVisibleDiscussionLines().length;
     this._unsub = this.store.addListener(() => this._onStoreNotify());
   }
 
@@ -102,7 +108,7 @@ export class TalkieTranscript extends LitElement {
   }
 
   private _onStoreNotify(): void {
-    const len = this.store.getVisibleTranscriptLines().length;
+    const len = this.store.getVisibleDiscussionLines().length;
     const delta = len - this._prevLen;
     if (delta > 0) {
       if (this._isPinnedToBottom) {
@@ -129,7 +135,7 @@ export class TalkieTranscript extends LitElement {
       const v = this.renderRoot.querySelector(
         "lit-virtualizer",
       ) as LitVirtualizer | null;
-      const n = this.store.getVisibleTranscriptLines().length;
+      const n = this.store.getVisibleDiscussionLines().length;
       if (v && n > 0) {
         v.scrollToIndex(n - 1, "end");
       }
@@ -161,8 +167,12 @@ export class TalkieTranscript extends LitElement {
     this.store.setTranscriptSearchPanelOpen(!this.store.transcriptSearchPanelOpen);
   }
 
+  private _toggleDiagnosticsPanel(): void {
+    this.store.setDiagnosticsPanelOpen(!this.store.diagnosticsPanelOpen);
+  }
+
   scrollToDedupeKey(dedupeKey: string): void {
-    const lines = this.store.getVisibleTranscriptLines();
+    const lines = this.store.getVisibleDiscussionLines();
     const index = lines.findIndex((l) => l.dedupeKey === dedupeKey);
     if (index < 0) {
       return;
@@ -178,22 +188,33 @@ export class TalkieTranscript extends LitElement {
 
   render() {
     const showNew = this.pendingNew > 0 && !this._isPinnedToBottom;
+    const lines = this.store.getVisibleDiscussionLines();
 
     return html`
       <div class="head">
-        <span class="head-title">Transcript</span>
-        <button
-          type="button"
-          class="search-toggle"
-          aria-label="Search transcript"
-          @click=${this._toggleSearchPanel}
-        >
-          搜索
-        </button>
+        <span class="head-title">Human ↔ Orchestrator Discussion</span>
+        <div class="actions">
+          <button
+            type="button"
+            class="toolbar-button"
+            aria-label="Search discussion"
+            @click=${this._toggleSearchPanel}
+          >
+            Search
+          </button>
+          <button
+            type="button"
+            class="toolbar-button"
+            aria-label="Open protocol diagnostics"
+            @click=${this._toggleDiagnosticsPanel}
+          >
+            Diagnostics
+          </button>
+        </div>
       </div>
       <lit-virtualizer
         scroller
-        .items=${this.store.getVisibleTranscriptLines()}
+        .items=${lines}
         .renderItem=${this._renderItem}
         .keyFunction=${this._keyFn}
         @scroll=${this._onScroll}

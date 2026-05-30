@@ -351,6 +351,104 @@ describe("DashboardStore collaboration metadata", () => {
   });
 });
 
+describe("DashboardStore orchestrator console projection", () => {
+  it("projects current space, orchestrator, availability, and default send state", () => {
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const selfSessionId = uuidv7();
+    const orchestratorId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "local-dashboard",
+        label: "Local Dashboard",
+        status: "active",
+        ownerSessionId: selfSessionId,
+        orchestratorSessionId: orchestratorId,
+        memberCount: 2,
+        members: [
+          {
+            sessionId: selfSessionId,
+            displayName: "Dashboard",
+            isHuman: true,
+            role: "",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+            presenceState: "online",
+          },
+          {
+            sessionId: orchestratorId,
+            displayName: "Codex Lead",
+            isHuman: false,
+            role: "orchestrator",
+            focus: "coordinating",
+            progress: "working",
+            blockedReason: null,
+            runtime: "codex-cli",
+            workspaceLabel: "agent-talkie",
+            presenceState: "online",
+          },
+        ],
+      },
+      selfSessionId,
+    );
+
+    const projection = store.getConsoleProjection();
+
+    expect(projection.space.label).toBe("Local Dashboard");
+    expect(projection.orchestrator?.displayName).toBe("Codex Lead");
+    expect(projection.defaultDiscussion.targetLabel).toBe("Codex Lead");
+    expect(projection.defaultDiscussion.canSend).toBe(true);
+    expect(projection.participantsById.get(orchestratorId)?.availability.kind).toBe(
+      "available",
+    );
+  });
+
+  it("does not present a missing orchestrator as a healthy default discussion", () => {
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const selfSessionId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "no-lead",
+        label: "No Lead",
+        status: "active",
+        ownerSessionId: selfSessionId,
+        orchestratorSessionId: null,
+        memberCount: 1,
+        members: [
+          {
+            sessionId: selfSessionId,
+            displayName: "Dashboard",
+            isHuman: true,
+            role: "",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+            presenceState: "online",
+          },
+        ],
+      },
+      selfSessionId,
+    );
+
+    const projection = store.getConsoleProjection();
+
+    expect(projection.orchestrator).toBeNull();
+    expect(projection.defaultDiscussion.canSend).toBe(false);
+    expect(projection.defaultDiscussion.status).toBe("missing-orchestrator");
+    expect(projection.defaultDiscussion.reason).toContain("No orchestrator");
+  });
+});
+
 describe("DashboardStore transcript visibility (MiniSearch + filters)", () => {
   it('getVisibleTranscriptLines filters out control when kind is "conversation"', () => {
     const store = new DashboardStore();

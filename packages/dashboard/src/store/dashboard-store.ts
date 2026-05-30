@@ -71,6 +71,56 @@ export type RosterRow = {
   lastSeenAtMs: number | null;
 };
 
+export type ParticipantAvailabilityKind =
+  | "available"
+  | "blocked"
+  | "stale"
+  | "offline"
+  | "unavailable";
+
+export type ParticipantAvailability = {
+  kind: ParticipantAvailabilityKind;
+  label: string;
+  detail: string;
+  canReceiveLive: boolean;
+  canReceivePrivateIntervention: boolean;
+};
+
+export type ParticipantProjection = RosterRow & {
+  availability: ParticipantAvailability;
+};
+
+export type DiscussionTargetStatus =
+  | "ready"
+  | "missing-orchestrator"
+  | "target-missing"
+  | "target-stale"
+  | "target-offline"
+  | "target-unavailable";
+
+export type DiscussionTargetProjection = {
+  mode: "orchestrator" | "private";
+  status: DiscussionTargetStatus;
+  targetSessionId: string | null;
+  targetLabel: string;
+  canSend: boolean;
+  reason: string;
+};
+
+export type DashboardConsoleProjection = {
+  space: {
+    id: string | null;
+    slug: string;
+    label: string;
+    status: "active" | "destroyed" | "archived" | "unknown";
+  };
+  orchestrator: ParticipantProjection | null;
+  participants: ParticipantProjection[];
+  participantsById: Map<string, ParticipantProjection>;
+  defaultDiscussion: DiscussionTargetProjection;
+  privateIntervention: DiscussionTargetProjection | null;
+};
+
 const GENERIC_HUMAN_DISPLAY_NAME_RE = /^human(?:[-_ ]?\d+)?$/i;
 const GENERIC_DASHBOARD_DISPLAY_NAME_RE = /^dashboard(?:[-_ ]?\d+)?$/i;
 
@@ -155,6 +205,7 @@ export class DashboardStore {
   transcriptSearchQuery = "";
   /** Right-hand transcript search/filter panel (D-03). */
   transcriptSearchPanelOpen = false;
+  diagnosticsPanelOpen = false;
   /** `null` = any sender. */
   transcriptFilterSenderSessionId: string | null = null;
   transcriptFilterKind: "all" | "control" | "conversation" = "all";
@@ -200,6 +251,14 @@ export class DashboardStore {
       return;
     }
     this.transcriptSearchPanelOpen = open;
+    this.notify();
+  }
+
+  setDiagnosticsPanelOpen(open: boolean): void {
+    if (this.diagnosticsPanelOpen === open) {
+      return;
+    }
+    this.diagnosticsPanelOpen = open;
     this.notify();
   }
 
@@ -255,6 +314,16 @@ export class DashboardStore {
       (line) =>
         this.lineMatchesTranscriptFilters(line) && hitSet.has(line.dedupeKey),
     );
+  }
+
+  getVisibleDiscussionLines(): TranscriptLine[] {
+    return this.getVisibleTranscriptLines().filter(
+      (line) => line.envelope.kind === "conversation",
+    );
+  }
+
+  getDiagnosticsTranscriptLines(): TranscriptLine[] {
+    return [...this.transcriptLines];
   }
 
   private lineMatchesTranscriptFilters(line: TranscriptLine): boolean {
@@ -376,15 +445,200 @@ export class DashboardStore {
 
   /** Default orchestrator path blocked when no roster row is marked orchestrator (D-05). */
   get isDefaultOrchestratorSendBlocked(): boolean {
-    if (this.sendTargetSessionId !== null) {
-      return false;
+    return !this.getConsoleProjection().defaultDiscussion.canSend;
+  }
+
+  get isSelectedTargetSendBlocked(): boolean {
+    if (this.sendTargetSessionId === null) {
+      return this.isDefaultOrchestratorSendBlocked;
     }
-    for (const row of this.roster.values()) {
-      if (row.orchestrator) {
-        return false;
-      }
+    return !this.getPrivateInterventionProjection(this.sendTargetSessionId)
+      .canSend;
+  }
+
+  getConsoleProjection(): DashboardConsoleProjection {
+    const participants = Array.from(this.roster.values()).map((row) =>
+      this.projectParticipant(row),
+    );
+    const participantsById = new Map(
+      participants.map((row) => [row.sessionId, row] as const),
+    );
+    const orchestrator =
+      participants.find((row) => row.orchestrator) ?? null;
+    const spaceStatus =
+      this.spaceDestroyedSlug === this.currentSpaceSlug
+        ? "destroyed"
+        : this.spaceArchivedSlug === this.currentSpaceSlug
+          ? "archived"
+          : this.activeSpaceId === null
+            ? "unknown"
+            : "active";
+    const privateIntervention =
+      this.sendTargetSessionId === null
+        ? null
+        : this.getPrivateInterventionProjection(this.sendTargetSessionId);
+    return {
+      space: {
+        id: this.activeSpaceId,
+        slug: this.currentSpaceSlug,
+        label: this.currentSpaceLabel,
+        status: spaceStatus,
+      },
+      orchestrator,
+      participants,
+      participantsById,
+      defaultDiscussion: this.getDefaultDiscussionProjection(orchestrator),
+      privateIntervention,
+    };
+  }
+
+  getDefaultDiscussionProjection(
+    orchestrator = this.getConsoleProjection().orchestrator,
+  ): DiscussionTargetProjection {
+    if (orchestrator === null) {
+      return {
+        mode: "orchestrator",
+        status: "missing-orchestrator",
+        targetSessionId: null,
+        targetLabel: "No orchestrator",
+        canSend: false,
+        reason: "No orchestrator is selected for this space.",
+      };
     }
-    return true;
+    return this.discussionProjectionForTarget(orchestrator, "orchestrator");
+  }
+
+  getPrivateInterventionProjection(
+    sessionId: string,
+  ): DiscussionTargetProjection {
+    const row = this.roster.get(sessionId);
+    if (row === undefined) {
+      return {
+        mode: "private",
+        status: "target-missing",
+        targetSessionId: sessionId,
+        targetLabel: `${sessionId.slice(0, 8)}...`,
+        canSend: false,
+        reason: "This participant is no longer in the space.",
+      };
+    }
+    return this.discussionProjectionForTarget(
+      this.projectParticipant(row),
+      "private",
+    );
+  }
+
+  private discussionProjectionForTarget(
+    row: ParticipantProjection,
+    mode: "orchestrator" | "private",
+  ): DiscussionTargetProjection {
+    const targetLabel = row.displayName;
+    const base = {
+      mode,
+      targetSessionId: row.sessionId,
+      targetLabel,
+    };
+    if (mode === "private" && row.isHuman) {
+      return {
+        ...base,
+        status: "target-unavailable",
+        canSend: false,
+        reason:
+          "Private intervention targets runtime sessions, not dashboard humans.",
+      };
+    }
+    if (row.availability.kind === "stale") {
+      return {
+        ...base,
+        status: "target-stale",
+        canSend: false,
+        reason:
+          mode === "orchestrator"
+            ? "Cannot send until the orchestrator is reachable."
+            : "Cannot send until this participant is reachable.",
+      };
+    }
+    if (row.availability.kind === "offline") {
+      return {
+        ...base,
+        status: "target-offline",
+        canSend: false,
+        reason:
+          mode === "orchestrator"
+            ? "Cannot send until the orchestrator is reachable."
+            : "Cannot send until this participant is reachable.",
+      };
+    }
+    if (!row.availability.canReceivePrivateIntervention && mode === "private") {
+      return {
+        ...base,
+        status: "target-unavailable",
+        canSend: false,
+        reason: row.availability.detail,
+      };
+    }
+    return {
+      ...base,
+      status: "ready",
+      canSend: true,
+      reason: "",
+    };
+  }
+
+  private projectParticipant(row: RosterRow): ParticipantProjection {
+    return {
+      ...row,
+      availability: this.projectAvailability(row),
+    };
+  }
+
+  private projectAvailability(row: RosterRow): ParticipantAvailability {
+    if (row.isHuman) {
+      return {
+        kind: "unavailable",
+        label: row.sessionId === this.selfSessionId ? "You" : "Human",
+        detail: "Dashboard humans are visible but are not runtime inboxes.",
+        canReceiveLive: false,
+        canReceivePrivateIntervention: false,
+      };
+    }
+    if (row.presenceState === "stale") {
+      return {
+        kind: "stale",
+        label: "Stale",
+        detail: "This runtime has not checked in recently.",
+        canReceiveLive: false,
+        canReceivePrivateIntervention: false,
+      };
+    }
+    if (row.presenceState === "offline") {
+      return {
+        kind: "offline",
+        label: "Offline",
+        detail: "This runtime is not currently connected.",
+        canReceiveLive: false,
+        canReceivePrivateIntervention: false,
+      };
+    }
+    if (row.progress === "blocked") {
+      return {
+        kind: "blocked",
+        label: "Blocked",
+        detail:
+          row.blockedReason.trim() === ""
+            ? "This runtime says it is blocked."
+            : row.blockedReason,
+        canReceiveLive: true,
+        canReceivePrivateIntervention: true,
+      };
+    }
+    return {
+      kind: "available",
+      label: "Available",
+      detail: "This runtime is online and can receive Talkie messages.",
+      canReceiveLive: true,
+      canReceivePrivateIntervention: true,
+    };
   }
 
   pushProtocolError(

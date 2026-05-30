@@ -104,7 +104,7 @@ describe("TalkieSendBar", () => {
     document.body.removeChild(el);
   });
 
-  it("warns when the orchestrator is offline and messages will be queued", async () => {
+  it("blocks the default composer when the orchestrator is offline", async () => {
     const store = new DashboardStore();
     const spaceId = uuidv7();
     const orchestratorId = uuidv7();
@@ -144,7 +144,60 @@ describe("TalkieSendBar", () => {
 
     const text = el.shadowRoot?.textContent ?? "";
     expect(text).toContain("orchestrator is offline");
-    expect(text).toContain("messages are queued until that runtime checks Talkie");
+    expect(text).toContain("Cannot send until the orchestrator is reachable");
+    expect(
+      el.shadowRoot?.querySelector<HTMLButtonElement>("button.send")?.disabled,
+    ).toBe(true);
+
+    document.body.removeChild(el);
+  });
+
+  it("blocks private intervention to a stale participant", async () => {
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const participantId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "room",
+        label: "Room",
+        status: "active",
+        ownerSessionId: null,
+        orchestratorSessionId: null,
+        memberCount: 1,
+        members: [
+          {
+            sessionId: participantId,
+            displayName: "Claude Code",
+            isHuman: false,
+            role: "worker",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "claude-code",
+            workspaceLabel: "repo",
+            presenceState: "stale",
+          },
+        ],
+      },
+      uuidv7(),
+    );
+    store.setSendTargetSession(participantId);
+
+    const el = document.createElement("talkie-send-bar");
+    (el as any).store = store;
+    (el as any).bridge = bridgeStub();
+    document.body.appendChild(el);
+    await (el as any).updateComplete;
+
+    const text = el.shadowRoot?.textContent ?? "";
+    expect(text).toContain("Private chat with Claude Code");
+    expect(text).toContain("participant is stale");
+    expect(text).toContain("Cannot send until this participant is reachable");
+    expect(
+      el.shadowRoot?.querySelector<HTMLButtonElement>("button.send")?.disabled,
+    ).toBe(true);
 
     document.body.removeChild(el);
   });

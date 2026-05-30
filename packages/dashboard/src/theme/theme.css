@@ -33,6 +33,10 @@ body {
 
 .talkie-app__header {
   flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 12px 16px;
   border-bottom: 1px solid var(--talkie-border);
   background: var(--talkie-surface);
@@ -59,4 +63,20 @@ body {
   flex: 1;
   min-height: 0;
   align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .talkie-app__body {
+    flex-direction: column;
+  }
+
+  #talkie-main-panel {
+    min-height: 68vh;
+    border-left: none;
+    border-top: 1px solid var(--talkie-border);
+  }
+
+  .talkie-transcript-workspace {
+    flex-direction: column;
+  }
 }

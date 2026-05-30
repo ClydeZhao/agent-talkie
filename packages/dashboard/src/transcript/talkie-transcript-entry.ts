@@ -60,20 +60,6 @@ export class TalkieTranscriptEntry extends LitElement {
     .body {
       color: var(--talkie-fg, #e6edf3);
     }
-    details.debug {
-      margin-top: 4px;
-      color: var(--talkie-muted, #8b949e);
-      font-size: 11px;
-    }
-    details.debug pre {
-      max-height: 220px;
-      overflow: auto;
-      white-space: pre-wrap;
-      border: 1px solid var(--talkie-border, #30363d);
-      border-radius: 6px;
-      padding: 8px;
-      background: var(--talkie-bg, #0d1117);
-    }
   `;
 
   @property({ type: Object })
@@ -153,10 +139,6 @@ export class TalkieTranscriptEntry extends LitElement {
     return `${sender} updated status`;
   }
 
-  private _debugJson(): string {
-    return JSON.stringify(this.line.envelope, null, 2);
-  }
-
   render() {
     const env = this.line.envelope;
     const senderLabel = this._senderLabel();
@@ -167,10 +149,6 @@ export class TalkieTranscriptEntry extends LitElement {
       return html`
         <div class="system">
           <span>${time} · ${this._systemEventText()}</span>
-          <details class="debug">
-            <summary>Diagnostics</summary>
-            <pre>${this._debugJson()}</pre>
-          </details>
         </div>
       `;
     }
@@ -184,10 +162,6 @@ export class TalkieTranscriptEntry extends LitElement {
             ${directLabel ? html`<span>${directLabel}</span>` : null}
           </div>
           <div class="body">${this._bodyText()}</div>
-          <details class="debug">
-            <summary>Diagnostics</summary>
-            <pre>${this._debugJson()}</pre>
-          </details>
         </div>
       </div>
     `;

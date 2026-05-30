@@ -4,6 +4,7 @@ import {
   orchestratorClearPayloadSchema,
   orchestratorDesignatePayloadSchema,
 } from "@agent-talkie/protocol";
+import { mountDashboardAppShell } from "../app/dashboard-app-shell.js";
 import { BrowserSessionBridge } from "../bridge/browser-session-bridge.js";
 import { connectJoinDashboardSession } from "../bridge/dashboard-session-startup.js";
 import { deriveHttpOriginFromWsUrl } from "../bridge/derive-http-origin.js";
@@ -15,16 +16,11 @@ import {
 import { scheduleRelayStopStatusRefreshes } from "../bridge/relay-status-refresh.js";
 import { RELAY_GENERATION_KEY } from "../bridge/session-storage-keys.js";
 import "../errors/talkie-error-bar.js";
-import "../roster/talkie-roster.js";
 import { TalkieTranscript } from "../transcript/talkie-transcript.js";
-import "../shell/talkie-search-panel.js";
 import {
   DashboardStore,
   type OversightSpaceSummary,
 } from "../store/dashboard-store.js";
-import "../shell/connection-shell.js";
-import "../shell/talkie-space-picker.js";
-import "../shell/talkie-send-bar.js";
 
 void (async () => {
   const wsUrl = import.meta.env.DEV
@@ -32,49 +28,25 @@ void (async () => {
     : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}`;
   const bridge = new BrowserSessionBridge({ url: wsUrl });
 
-  const headerRow = document.createElement("div");
-  headerRow.classList.add("talkie-app__header");
-  headerRow.style.display = "flex";
-  headerRow.style.alignItems = "center";
-  headerRow.style.gap = "16px";
-  headerRow.style.flexWrap = "wrap";
-
-  const picker = document.createElement("talkie-space-picker");
-  const shell = document.createElement("talkie-connection-shell");
-  headerRow.appendChild(picker);
-  headerRow.appendChild(shell);
-
   const app = document.getElementById("app");
   if (!app) {
     throw new Error("Missing #app mount element");
   }
-  app.classList.add("talkie-app");
-
-  const bodyRow = document.createElement("div");
-  bodyRow.className = "talkie-app__body";
 
   const store = new DashboardStore();
-  const errorBar = document.createElement("talkie-error-bar");
-  errorBar.store = store;
-
-  const roster = document.createElement("talkie-roster");
-  const mainPanel = document.createElement("div");
-  mainPanel.id = "talkie-main-panel";
-  const workspace = document.createElement("div");
-  workspace.className = "talkie-transcript-workspace";
-  const transcript = document.createElement("talkie-transcript");
-  transcript.store = store;
-  const searchPanel = document.createElement("talkie-search-panel");
-  searchPanel.store = store;
-  searchPanel.style.display = "none";
-  workspace.appendChild(transcript);
-  workspace.appendChild(searchPanel);
-  mainPanel.appendChild(workspace);
-
-  const sendBar = document.createElement("talkie-send-bar");
-  sendBar.store = store;
-  sendBar.bridge = bridge;
-  mainPanel.appendChild(sendBar);
+  const httpOrigin = deriveHttpOriginFromWsUrl(wsUrl);
+  const {
+    picker,
+    connectionShell: shell,
+    roster,
+    searchPanel,
+    diagnosticsPanel,
+  } = mountDashboardAppShell({
+    mount: app,
+    store,
+    bridge,
+    httpOrigin,
+  });
 
   roster.addEventListener("talkie-select-send-target", (ev) => {
     const sid = (ev as CustomEvent<{ sessionId: string }>).detail.sessionId;
@@ -140,13 +112,6 @@ void (async () => {
     });
   });
 
-  bodyRow.appendChild(roster);
-  bodyRow.appendChild(mainPanel);
-
-  app.appendChild(headerRow);
-  app.appendChild(errorBar);
-  app.appendChild(bodyRow);
-
   app.addEventListener("talkie-jump-to-dedupe", (ev) => {
     const d = (ev as CustomEvent<{ dedupeKey: string }>).detail;
     const t = document.querySelector("talkie-transcript");
@@ -154,11 +119,6 @@ void (async () => {
       t.scrollToDedupeKey(d.dedupeKey);
     }
   });
-
-  const httpOrigin = deriveHttpOriginFromWsUrl(wsUrl);
-  picker.httpOrigin = httpOrigin;
-  picker.bridge = bridge;
-  picker.store = store;
 
   const refreshRelayStatus = async (): Promise<void> => {
     try {
@@ -197,7 +157,8 @@ void (async () => {
   })();
 
   store.addListener(() => {
-    roster.entries = Array.from(store.roster.values());
+    const projection = store.getConsoleProjection();
+    roster.entries = projection.participants;
     roster.selfIsOwner = store.selfIsOwner;
     roster.selfSessionId = store.selfSessionId ?? "";
     picker.currentSlug = store.currentSpaceSlug;
@@ -210,6 +171,7 @@ void (async () => {
     shell.stopSupported = store.relayStatus.stopSupported;
     shell.restartSupported = store.relayStatus.restartSupported;
     searchPanel.style.display = store.transcriptSearchPanelOpen ? "flex" : "none";
+    diagnosticsPanel.open = store.diagnosticsPanelOpen;
   });
 
   bridge.onProtocolError((w) => {

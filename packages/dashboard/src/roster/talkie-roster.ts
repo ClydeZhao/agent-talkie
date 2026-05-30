@@ -1,7 +1,10 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-import type { RosterRow } from "../store/dashboard-store.js";
+import type {
+  ParticipantProjection,
+  RosterRow,
+} from "../store/dashboard-store.js";
 import "./talkie-roster-entry.js";
 
 @customElement("talkie-roster")
@@ -49,10 +52,17 @@ export class TalkieRoster extends LitElement {
       text-transform: none;
       color: var(--talkie-muted, #8b949e);
     }
+    @media (max-width: 900px) {
+      :host {
+        width: 100%;
+        max-height: 34vh;
+        border-right: none;
+      }
+    }
   `;
 
   @property({ type: Array })
-  entries: RosterRow[] = [];
+  entries: Array<RosterRow | ParticipantProjection> = [];
 
   @property({ type: Boolean })
   selfIsOwner = false;

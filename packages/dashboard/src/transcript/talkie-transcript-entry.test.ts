@@ -64,7 +64,7 @@ describe("TalkieTranscriptEntry", () => {
     expect(visibleText).toContain("Plan is ready");
     expect(visibleText).not.toContain("conversation / chat.message");
     expect(visibleText).not.toContain(senderId);
-    expect(el.shadowRoot?.querySelector("details")).toBeTruthy();
+    expect(el.shadowRoot?.querySelector("details")).toBeNull();
 
     document.body.removeChild(el);
   });
@@ -93,6 +93,7 @@ describe("TalkieTranscriptEntry", () => {
 
     expect(el.shadowRoot?.textContent).toContain("joined the space");
     expect(el.shadowRoot?.textContent).not.toContain("control / space.join");
+    expect(el.shadowRoot?.querySelector("details")).toBeNull();
 
     document.body.removeChild(el);
   });

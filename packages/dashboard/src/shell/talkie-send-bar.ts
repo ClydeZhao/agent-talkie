@@ -148,44 +148,41 @@ export class TalkieSendBar extends LitElement {
     if (!this._canSend()) {
       return true;
     }
-    if (
-      this.store.sendTargetSessionId === null &&
-      this.store.isDefaultOrchestratorSendBlocked
-    ) {
-      return true;
-    }
-    return false;
+    return this.store.isSelectedTargetSendBlocked;
   }
 
   private _targetLabel(): string {
-    const sid = this.store.sendTargetSessionId;
-    if (sid === null) {
-      const orchestrator = Array.from(this.store.roster.values()).find(
-        (row) => row.orchestrator,
-      );
-      return orchestrator
-        ? `Orchestrator discussion: ${orchestrator.displayName}`
-        : "Orchestrator discussion";
+    const projection = this.store.getConsoleProjection();
+    if (this.store.sendTargetSessionId === null) {
+      return projection.defaultDiscussion.targetSessionId === null
+        ? "Orchestrator discussion"
+        : `Orchestrator discussion: ${projection.defaultDiscussion.targetLabel}`;
     }
-    const row = this.store.roster.get(sid);
-    const name = row?.displayName ?? `${sid.slice(0, 8)}…`;
-    return `Private chat with ${name}`;
+    const target =
+      projection.privateIntervention ??
+      this.store.getPrivateInterventionProjection(this.store.sendTargetSessionId);
+    return `Private chat with ${target.targetLabel}`;
   }
 
   private _targetPresenceHint(): string {
-    const sid = this.store.sendTargetSessionId;
-    const row =
-      sid === null
-        ? Array.from(this.store.roster.values()).find((r) => r.orchestrator)
-        : this.store.roster.get(sid);
-    if (!row) {
+    const projection = this.store.getConsoleProjection();
+    const target =
+      this.store.sendTargetSessionId === null
+        ? projection.defaultDiscussion
+        : (projection.privateIntervention ??
+          this.store.getPrivateInterventionProjection(this.store.sendTargetSessionId));
+    if (target.status === "ready") {
       return "";
     }
-    if (row.presenceState === "online") {
-      return "";
+    const targetKind =
+      this.store.sendTargetSessionId === null ? "orchestrator" : "participant";
+    if (target.status === "target-stale") {
+      return `${targetKind} is stale. ${target.reason}`;
     }
-    const target = sid === null ? "orchestrator" : "participant";
-    return `${target} is ${row.presenceState}; messages are queued until that runtime checks Talkie.`;
+    if (target.status === "target-offline") {
+      return `${targetKind} is offline. ${target.reason}`;
+    }
+    return target.reason;
   }
 
   private _onDismissClick(): void {
@@ -215,10 +212,7 @@ export class TalkieSendBar extends LitElement {
     if (text.length === 0) {
       return;
     }
-    if (
-      this.store.sendTargetSessionId === null &&
-      this.store.isDefaultOrchestratorSendBlocked
-    ) {
+    if (this.store.isSelectedTargetSendBlocked) {
       return;
     }
     const version = this.bridge.getNegotiatedEnvelopeVersion();
@@ -248,9 +242,6 @@ export class TalkieSendBar extends LitElement {
       return html``;
     }
     const showDismiss = this.store.sendTargetSessionId !== null;
-    const showOrchHint =
-      this.store.sendTargetSessionId === null &&
-      this.store.isDefaultOrchestratorSendBlocked;
     const presenceHint = this._targetPresenceHint();
 
     return html`
@@ -267,11 +258,6 @@ export class TalkieSendBar extends LitElement {
             </button>`
           : null}
       </div>
-      ${showOrchHint
-        ? html`<div class="hint">
-            No orchestrator selected
-          </div>`
-        : null}
       ${presenceHint ? html`<div class="hint">${presenceHint}</div>` : null}
       <div class="row">
         <textarea
