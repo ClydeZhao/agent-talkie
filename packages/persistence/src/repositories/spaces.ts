@@ -23,17 +23,26 @@ export function normalizeSpaceSlug(raw: string): string {
   return s;
 }
 
-export type SpaceStatus = "active" | "archived" | "expired";
+export type SpaceStatus = "active" | "idle" | "archived" | "destroyed";
+
+function labelFromSlug(slug: string): string {
+  return slug
+    .split("-")
+    .filter((part) => part.length > 0)
+    .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 export function insertSpaceWithSlug(
   db: Database.Database,
-  args: { slug: string; nowMs: number; id?: string },
+  args: { slug: string; nowMs: number; id?: string; label?: string },
 ): { id: string } {
   const id = args.id ?? uuidv7();
+  const label = args.label?.trim() || labelFromSlug(args.slug);
   db.prepare(
-    `INSERT INTO spaces (id, created_at, slug, status)
-     VALUES (?, ?, ?, 'active')`,
-  ).run(id, args.nowMs, args.slug);
+    `INSERT INTO spaces (id, created_at, slug, status, label)
+     VALUES (?, ?, ?, 'active', ?)`,
+  ).run(id, args.nowMs, args.slug, label);
   return { id };
 }
 
@@ -44,23 +53,27 @@ export function getSpaceBySlug(
   | {
       id: string;
       slug: string;
+      label: string;
       status: SpaceStatus;
       archivedAt: number | null;
       expiresAt: number | null;
+      destroyedAt: number | null;
     }
   | undefined {
   const row = db
     .prepare(
-      `SELECT id, slug, status, archived_at, expires_at
+      `SELECT id, slug, label, status, archived_at, expires_at, destroyed_at
        FROM spaces WHERE slug = ?`,
     )
     .get(slug) as
     | {
         id: string;
         slug: string;
+        label: string | null;
         status: string;
         archived_at: number | null;
         expires_at: number | null;
+        destroyed_at: number | null;
       }
     | undefined;
 
@@ -72,10 +85,33 @@ export function getSpaceBySlug(
   return {
     id: row.id,
     slug: row.slug,
+    label: row.label ?? labelFromSlug(row.slug),
     status,
     archivedAt: row.archived_at,
     expiresAt: row.expires_at,
+    destroyedAt: row.destroyed_at,
   };
+}
+
+export function setSpaceActive(db: Database.Database, spaceId: string): void {
+  db.prepare(
+    `UPDATE spaces
+     SET status = 'active', archived_at = NULL, expires_at = NULL, destroyed_at = NULL
+     WHERE id = ?`,
+  ).run(spaceId);
+}
+
+export function setSpaceIdle(
+  db: Database.Database,
+  spaceId: string,
+  nowMs: number = Date.now(),
+  idleTtlMs: number = DEFAULT_SPACE_ARCHIVED_TTL_MS,
+): void {
+  db.prepare(
+    `UPDATE spaces
+     SET status = 'idle', archived_at = NULL, expires_at = ?
+     WHERE id = ? AND status IN ('active', 'idle')`,
+  ).run(nowMs + idleTtlMs, spaceId);
 }
 
 export function setSpaceArchived(
@@ -97,11 +133,19 @@ export function reviveSpaceFromArchived(
   spaceId: string,
   _nowMs: number,
 ): void {
+  setSpaceActive(db, spaceId);
+}
+
+export function markSpaceDestroyed(
+  db: Database.Database,
+  spaceId: string,
+  nowMs: number,
+): void {
   db.prepare(
     `UPDATE spaces
-     SET status = 'active', archived_at = NULL, expires_at = NULL
+     SET status = 'destroyed', destroyed_at = ?, archived_at = NULL, expires_at = NULL
      WHERE id = ?`,
-  ).run(spaceId);
+  ).run(nowMs, spaceId);
 }
 
 export function insertMembership(

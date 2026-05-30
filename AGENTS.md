@@ -16,9 +16,10 @@
 | 产品模式、用户体验边界、长期非目标 | `PRD.md` |
 | 中文产品镜像 | `PRD-CN.md`，仅作为 `PRD.md` 的语义镜像 |
 | 包结构、架构不变量、运行时边界 | `docs/architecture.md` |
-| 当前单机版产品化里程碑 | `docs/milestones/v3-local-orchestrated-product.md` |
+| 当前 dashboard 产品化目标 | `docs/milestones/local-orchestrator-dashboard.md` |
+| 已验证的单机最小协作闭环 | `docs/milestones/local-codex-claude-loop.md` |
 | Adapter ingress contract | `docs/adapter-ingress.md` |
-| 随产品安装的 runtime-facing Talkie skills | `.codex/skills/talkie-space/SKILL.md`、`.cursor/skills/talkie-space/SKILL.md` |
+| 随产品安装的 runtime-facing Talkie skills | `.codex/skills/talkie-space/SKILL.md`、`.cursor/skills/talkie-space/SKILL.md`、`.claude/skills/talkie-space/SKILL.md` |
 | 共享但尚未升格的经验和坑点 | `.agents/learnings.md` |
 | package-local 命令和 API | 对应 package README（若存在）与源码；缺少 README 时回到 `docs/architecture.md` 和源码 |
 
@@ -29,7 +30,7 @@
 - `packages/` 是产品代码。每个 workspace package 应保持自己的源码、测试、build 配置；README 只在能稳定降低理解成本时新增。
 - `docs/` 是长期设计与使用文档。新增 Markdown 前先判断能否并入现有文档；说不清维护边界时不要新增。
 - `docs/milestones/` 只放仍有长期价值的交付定义和路线图，不放 agent 执行流水账。
-- `.codex/skills/talkie-space/` 与 `.cursor/skills/talkie-space/` 是随产品安装到各 runtime 的 integration skill 源模板；它们指导 agent 使用 Talkie，但不应变成通用开发流程系统。
+- `.codex/skills/talkie-space/`、`.cursor/skills/talkie-space/` 与 `.claude/skills/talkie-space/` 是随产品安装到各 runtime 的 integration skill 源模板；它们指导 agent 使用 Talkie，但不应变成通用开发流程系统。
 - `.agents/skills/` 只保留仓库需要的少量文档/写作类辅助 skill。新增 skill 前先确认它不能被更简单的文档规则或 package-local 命令替代。
 - `.agents/learnings.md` 存放可复用但尚未升格为正式规范的经验；`.agents/local/` 存放本机私有备注，并且不进 git。
 
@@ -61,8 +62,8 @@
 | supervisor 或 relay daemon 生命周期 | `npm run test -w @agent-talkie/supervisor` |
 | CLI 用户命令、oversight fallback、smoke entry | `npm run test -w @agent-talkie/cli`，必要时 `npm run smoke:local` |
 | shared client session behavior | `npm run test -w @agent-talkie/client` |
-| Codex / stdio / Cursor MCP adapter | 对应 adapter package test；跨 runtime 行为变更还要跑 `npm run smoke:local` |
-| dashboard store、bridge、Lit component | `npm run test -w @agent-talkie/dashboard` |
+| Codex / stdio / MCP adapter | 对应 adapter package test；跨 runtime 行为变更还要跑 `npm run smoke:local`，并验证 joined runtime 能收到 dashboard 发出的后续消息且能回写响应或状态 |
+| dashboard store、bridge、Lit component | `npm run test -w @agent-talkie/dashboard`；涉及发送、私聊、orchestrator、presence 或 roster 时必须用 Playwright/脚本验证“发送后有可观察结果”，不能只验证按钮可点或 transcript 写入 |
 | 全仓行为或发布前基线 | `npm test` 与 `npm run build` |
 
 ### 验证层级判断
@@ -89,9 +90,21 @@
 端到端验证也要分层选择：
 
 - 用 Playwright 验证浏览器可观察行为：dashboard 路由、DOM 状态、按钮、表单、WebSocket 状态、布局、截图、localStorage/sessionStorage、搜索和消息渲染。
-- 用 Computer Use 验证真实桌面 runtime 行为：Codex App、Codex CLI、Cursor App、Cursor MCP 工具、原生 prompt/approval、复制 join prompt 到另一个 runtime、真实跨 app hello/ack。
+- 用 Computer Use 验证真实桌面/runtime 行为：Codex CLI、Claude Code、MCP 工具可见性、原生 prompt/approval、复制 join prompt 到另一个 runtime、真实跨工具 hello/ack。只有当改动触及 Cursor 集成时，才把 Cursor App 纳入当前 gate。
 - 用 `npm run smoke:local` 验证自动化本地跨 package 链路，但不要把它当成真实 app E2E 的替代品；它只能证明模拟 runtime 链路。
 - 如果应该跑 E2E 但当前环境不能跑，不能声明该体验完成；必须记录 blocker、已完成的较低层验证、剩余风险和下一步验证入口。
+
+### 用户可用性门槛
+
+对协作产品流，`join` 成功、roster 出现成员、transcript 写入消息、或者 smoke 通过，都只是中间信号，不能单独证明产品可用。handoff 给用户前必须额外证明：
+
+- dashboard 发出的默认 orchestrator 消息能被当前有效 orchestrator 收到，并产生可观察结果：回复、状态更新、pending inbox 计数、或明确的 offline/unresponsive 错误。
+- dashboard 发出的 private intervention 能投递到用户选择的目标 participant；目标离线、已 left、不是当前 active member、或没有 message loop 时，UI 必须阻止发送或明确展示不可响应状态。
+- runtime join 后必须有后续消息消费路径。可以是真实 runtime 常驻 loop、adapter inbox resource/MCP pull flow、CLI watch/pull flow，或被 dashboard 明确标成“需要手动/agent 拉取”。不能把一次性 hello/ack 当成持续协作能力。
+- active-space list 不能把 `memberCount=0`、orchestrator 不在 active members 中、或全员 stale/offline 的空间呈现成正常可聊空间；这类状态必须被标注、隐藏、归档，或在发送时给出明确阻断。
+- E2E 必须包含一轮“human dashboard sends -> runtime receives -> runtime responds/status updates -> dashboard observes result”。如果没有这一轮，只能称为 join smoke，不能作为可用性 gate。
+
+即使 Computer Use 被阻塞，也必须用可自动化替代层发现上述问题：例如通过 CLI/Cursor MCP 工具 join，Playwright 在 dashboard 发送消息，然后用 `talkie pull`、MCP `pull_inbox`、transcript、roster/status 和 DOM 断言验证投递与响应路径。不能因为真实桌面 app 无法自动操作，就把这些基础交互留给用户首测。
 
 ### 验证计划
 
@@ -108,7 +121,7 @@
 - 验证方式：用 Playwright、Computer Use、`npm run smoke:local` 还是它们的组合，以及为什么这样选。
 - 通过标准：哪些可观察结果必须成立，哪些失败路径必须被正确处理。
 
-端到端验证不能只覆盖 happy path。至少要包含一个能证明系统没有被“理想路径假阳性”骗过的非 happy path，例如 invalid input、missing orchestrator、stale participant、relay down/restart、duplicate join、permission/prompt interruption、archived space 不应出现在 active list、无法连接 runtime 时的错误提示等。没有 negative/error/edge 场景的 E2E 只能称为 happy-path smoke，不能作为完整 phase gate。
+端到端验证不能只覆盖 happy path。至少要包含一个能证明系统没有被“理想路径假阳性”骗过的非 happy path，例如 invalid input、missing orchestrator、stale participant、relay down/restart、duplicate join、permission/prompt interruption、archived space 不应出现在 active list、无法连接 runtime 时的错误提示等。没有 negative/error/edge 场景的 E2E 只能称为 happy-path smoke，不能作为完整交付 gate。
 
 如果某项验证不适合当前改动，要说明原因。docs-only 改动可以跳过 build、unit、E2E，但必须做文档一致性 review 和 `git diff --check`。
 
@@ -120,7 +133,7 @@ Playwright 是 dashboard 的首选 UI 验证工具。只要问题能在浏览器
 
 ### Computer Use 什么时候用
 
-使用 Computer Use 验证真实桌面 runtime 工作流：Codex App、Codex CLI、Cursor App、Cursor MCP 工具可见性、原生 ask-question/approval/prompt 行为、用户复制 join prompt 到另一个 runtime 后是否能完成实际协作。
+使用 Computer Use 验证真实桌面/runtime 工作流：Codex CLI、Claude Code、MCP 工具可见性、原生 ask-question/approval/prompt 行为、用户复制 join prompt 到另一个 runtime 后是否能完成实际协作。Cursor App 只在当前改动明确覆盖 Cursor 集成时进入验证范围。
 
 Computer Use 是产品级人工工作流验证工具，不是普通 dashboard DOM 测试工具。它应在需要真实 app 集成或用户明确要求真实 runtime 验证时使用。
 
@@ -148,7 +161,7 @@ Computer Use 是产品级人工工作流验证工具，不是普通 dashboard DO
 
 ### Markdown 命名规则
 
-1. 普通内容页使用 lowercase-kebab-case，例如 `docs/adapter-ingress.md`、`docs/milestones/v3-local-orchestrated-product.md`。
+1. 普通内容页使用 lowercase-kebab-case，例如 `docs/adapter-ingress.md`、`docs/milestones/local-codex-claude-loop.md`。
 2. 仓库根部、package 根部或工具识别的入口文件可以使用大写约定，例如 `AGENTS.md`、`README.md`、`SKILL.md`、`PRD.md`、`MILESTONES.md`。
 3. 大写文件名只用于入口、标准社区文件、稳定 acronym 或兼容性指针。需要分隔词时使用 hyphen，不使用 underscore。
 4. 新增长期文档默认放在 `docs/` 下并使用 lowercase-kebab-case。只有被工具识别或作为顶层入口时，才新增大写 Markdown。

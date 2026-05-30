@@ -22,6 +22,7 @@ import {
   orchestratorDesignatedWireSchema,
   protocolErrorWireSchema,
   sessionRegisteredWireSchema,
+  spaceArchivedWireSchema,
   spaceDestroyedWireSchema,
   spaceJoinedWireSchema,
   transcriptCatchupMessageSchema,
@@ -29,6 +30,7 @@ import {
   type MembershipRemovedWire,
   type OrchestratorRosterWire,
   type ProtocolErrorWire,
+  type SpaceArchivedWire,
   type SpaceDestroyedWire,
 } from "./wire-schemas.js";
 
@@ -102,6 +104,9 @@ export class BrowserSessionBridge {
   >();
   private readonly spaceDestroyedListeners = new Set<
     (m: SpaceDestroyedWire) => void
+  >();
+  private readonly spaceArchivedListeners = new Set<
+    (m: SpaceArchivedWire) => void
   >();
   private pendingJoin:
     | {
@@ -240,6 +245,13 @@ export class BrowserSessionBridge {
     this.spaceDestroyedListeners.add(cb);
     return () => {
       this.spaceDestroyedListeners.delete(cb);
+    };
+  }
+
+  onSpaceArchivedWire(cb: (m: SpaceArchivedWire) => void): () => void {
+    this.spaceArchivedListeners.add(cb);
+    return () => {
+      this.spaceArchivedListeners.delete(cb);
     };
   }
 
@@ -423,14 +435,14 @@ export class BrowserSessionBridge {
           storageRemove(SESSION_ID_KEY);
           storageRemove(RECONNECT_SECRET_KEY);
           await this.registerNewSession({
-            displayName: "Human",
+            displayName: "Dashboard",
             runtime: "browser",
             workspaceLabel: "dashboard",
           });
         }
       } else {
         await this.registerNewSession({
-          displayName: "Human",
+          displayName: "Dashboard",
           runtime: "browser",
           workspaceLabel: "dashboard",
         });
@@ -455,6 +467,21 @@ export class BrowserSessionBridge {
           for (const cb of this.spaceDestroyedListeners) {
             try {
               cb({ type: "space.destroyed", slug });
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        return;
+      }
+      if (err instanceof Error && err.message.includes("space_archived")) {
+        const slug = this._lastJoinedSlug;
+        this._lastJoinedSlug = null;
+        this.close();
+        if (slug) {
+          for (const cb of this.spaceArchivedListeners) {
+            try {
+              cb({ type: "space.archived", slug });
             } catch {
               /* ignore */
             }
@@ -775,6 +802,18 @@ export class BrowserSessionBridge {
       return;
     }
 
+    const spaceArchived = spaceArchivedWireSchema.safeParse(parsed);
+    if (spaceArchived.success) {
+      for (const cb of this.spaceArchivedListeners) {
+        try {
+          cb(spaceArchived.data);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
+
     const env = safeParseEnvelope(parsed);
     if (env.success) {
       for (const h of this.envelopeHandlers) {
@@ -847,6 +886,11 @@ export class BrowserSessionBridge {
       storageRemove(RECONNECT_SECRET_KEY);
       return null;
     }
+  }
+
+  clearStoredSessionCredentials(): void {
+    storageRemove(SESSION_ID_KEY);
+    storageRemove(RECONNECT_SECRET_KEY);
   }
 
   private async resume(
@@ -931,6 +975,35 @@ export class BrowserSessionBridge {
     const parsed = safeParseEnvelope(envelope);
     if (!parsed.success) {
       throw new Error("sendSpaceDestroy: invalid envelope");
+    }
+    ws.send(JSON.stringify(envelope));
+  }
+
+  sendSpaceArchive(args: {
+    spaceId: string;
+    slug: string;
+    idempotencyKey: string;
+  }): void {
+    if (this.negotiatedVersion === null || this.registeredSessionId === null) {
+      throw new Error("sendSpaceArchive: not_ready");
+    }
+    const ws = this.socket;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error("sendSpaceArchive: socket_not_open");
+    }
+    const envelope: Envelope = {
+      version: this.negotiatedVersion,
+      id: crypto.randomUUID(),
+      sessionId: this.registeredSessionId,
+      kind: "control",
+      type: "space.archive",
+      payload: { slug: args.slug },
+      idempotencyKey: args.idempotencyKey,
+      spaceId: args.spaceId,
+    };
+    const parsed = safeParseEnvelope(envelope);
+    if (!parsed.success) {
+      throw new Error("sendSpaceArchive: invalid envelope");
     }
     ws.send(JSON.stringify(envelope));
   }

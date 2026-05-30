@@ -96,4 +96,65 @@ describe("collaboration orchestrator space owner", () => {
     expect(ws.sent.length).toBeGreaterThan(0);
     expect(ws.sent[0]).toContain('"error":"not_space_owner"');
   });
+
+  it("strips client-supplied effectiveTo before persisting collaboration control", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const now = Date.now();
+    const idH = randomUUID();
+    const idA = randomUUID();
+    createSession(
+      db,
+      {
+        displayName: "human",
+        runtime: "dashboard",
+        workspaceLabel: "browser",
+        isHuman: true,
+      },
+      { id: idH },
+    );
+    createSession(
+      db,
+      { displayName: "agent", runtime: "t", workspaceLabel: "w" },
+      { id: idA },
+    );
+    const { id: spaceId } = insertSpaceWithSlug(db, {
+      slug: "strip-control-effective",
+      nowMs: now,
+    });
+    insertMembership(db, { spaceId, sessionId: idH, nowMs: now });
+    insertMembership(db, { spaceId, sessionId: idA, nowMs: now });
+    db.prepare(`UPDATE spaces SET owner_session_id = ? WHERE id = ?`).run(
+      idH,
+      spaceId,
+    );
+
+    const ws = captureWs();
+    const ctx: RelayDispatchContext = {
+      db,
+      ws,
+      registry: new SessionRegistry(),
+      boundSessionId: idH,
+      negotiatedVersion: 1,
+    };
+    const envelope: Envelope = {
+      version: 1,
+      id: randomUUID(),
+      sessionId: idH,
+      kind: "control",
+      type: "orchestrator.designate",
+      spaceId,
+      idempotencyKey: randomUUID(),
+      payload: { orchestratorSessionId: idA },
+      effectiveTo: idA,
+    };
+
+    handleCollaborationControl(ctx, envelope);
+
+    const row = db
+      .prepare(`SELECT envelope_json FROM transcript_entries WHERE space_id = ?`)
+      .get(spaceId) as { envelope_json: string };
+    const persisted = JSON.parse(row.envelope_json) as { effectiveTo?: string };
+    expect(persisted.effectiveTo).toBeUndefined();
+  });
 });

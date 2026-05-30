@@ -3,17 +3,20 @@ import type { Envelope } from "@agent-talkie/protocol";
 import {
   clearMembershipLeftAt,
   countActiveMembers,
-  deleteSpaceById,
   findActiveMembershipForSession,
   getSessionById,
   getSpaceBySlug,
   getSpaceOwnerSessionId,
+  getOrchestratorSessionId,
   insertMembership,
   insertSpaceWithSlug,
+  markSpaceDestroyed,
   markMembershipLeft,
   normalizeSpaceSlug,
-  reviveSpaceFromArchived,
+  setSpaceActive,
   setSpaceArchived,
+  setSpaceIdle,
+  setOrchestratorSessionId,
   tryAssignSpaceOwnerIfUnsetForHuman,
   tryRecordIdempotencyKey,
 } from "@agent-talkie/persistence";
@@ -30,6 +33,10 @@ export type SpaceLeaveOutcome =
 
 export type SpaceDestroyOutcome =
   | { kind: "destroyed"; slug: string; closeSessionIds: string[] }
+  | { kind: "error"; error: string; closeConnection?: boolean };
+
+export type SpaceArchiveOutcome =
+  | { kind: "archived"; slug: string; closeSessionIds: string[] }
   | { kind: "error"; error: string; closeConnection?: boolean };
 
 export type MembershipRemoveOutcome =
@@ -54,24 +61,39 @@ function resolveOrCreateSpaceForSlug(
   db: Database.Database,
   slugNorm: string,
   nowMs: number,
-): string {
+  label: string | undefined,
+):
+  | { kind: "ok"; spaceId: string; created: boolean }
+  | { kind: "error"; error: string } {
   for (;;) {
     const row = getSpaceBySlug(db, slugNorm);
     if (!row) {
-      return insertSpaceWithSlug(db, { slug: slugNorm, nowMs }).id;
+      const insertArgs: Parameters<typeof insertSpaceWithSlug>[1] = {
+        slug: slugNorm,
+        nowMs,
+      };
+      if (label !== undefined) {
+        insertArgs.label = label;
+      }
+      return {
+        kind: "ok",
+        spaceId: insertSpaceWithSlug(db, insertArgs).id,
+        created: true,
+      };
     }
     if (row.status === "active") {
-      return row.id;
+      return { kind: "ok", spaceId: row.id, created: false };
     }
-    if (
-      row.status === "archived" &&
-      row.expiresAt != null &&
-      row.expiresAt > nowMs
-    ) {
-      reviveSpaceFromArchived(db, row.id, nowMs);
-      return row.id;
+    if (row.status === "idle") {
+      setSpaceActive(db, row.id);
+      return { kind: "ok", spaceId: row.id, created: false };
     }
-    deleteSpaceById(db, row.id);
+    if (row.status === "archived") {
+      return { kind: "error", error: "space_archived" };
+    }
+    if (row.status === "destroyed") {
+      return { kind: "error", error: "space_destroyed" };
+    }
   }
 }
 
@@ -89,7 +111,7 @@ function currentActiveSpaceId(
 }
 
 /**
- * Join space by slug (create-or-revive-or-replace per plan 02-03).
+ * Join space by slug. Archived/destroyed slugs are durable terminal states.
  * Runs in a single SQLite transaction.
  */
 export function handleSpaceJoin(
@@ -99,6 +121,8 @@ export function handleSpaceJoin(
     idempotencyKey: string;
     slugRaw: string;
     nowMs: number;
+    label?: string;
+    creatorOrchestrator?: boolean;
   },
 ): SpaceJoinOutcome {
   const run = (): SpaceJoinOutcome => {
@@ -140,11 +164,16 @@ export function handleSpaceJoin(
       return { kind: "error", error: "invalid_slug" };
     }
 
-    const targetSpaceId = resolveOrCreateSpaceForSlug(
+    const targetSpace = resolveOrCreateSpaceForSlug(
       db,
       slugNorm,
       args.nowMs,
+      args.label,
     );
+    if (targetSpace.kind === "error") {
+      return { kind: "error", error: targetSpace.error };
+    }
+    const targetSpaceId = targetSpace.spaceId;
 
     const activeSpaceId = currentActiveSpaceId(db, args.sessionId);
     if (activeSpaceId && activeSpaceId !== targetSpaceId) {
@@ -189,6 +218,13 @@ export function handleSpaceJoin(
       spaceId: targetSpaceId,
       sessionId: args.sessionId,
     });
+    if (
+      targetSpace.created &&
+      args.creatorOrchestrator === true &&
+      getOrchestratorSessionId(db, targetSpaceId) === null
+    ) {
+      setOrchestratorSessionId(db, targetSpaceId, args.sessionId, args.nowMs);
+    }
 
     const slugRow = db
       .prepare(`SELECT slug FROM spaces WHERE id = ?`)
@@ -247,7 +283,7 @@ export function handleSpaceLeave(
     const { spaceId } = active;
     markMembershipLeft(db, spaceId, args.sessionId, args.nowMs);
     if (countActiveMembers(db, spaceId, args.nowMs) === 0) {
-      setSpaceArchived(db, spaceId, args.nowMs, LAST_MEMBER_ARCHIVE_TTL_MS);
+      setSpaceIdle(db, spaceId, args.nowMs, LAST_MEMBER_ARCHIVE_TTL_MS);
     }
     return { kind: "left", spaceId };
   };
@@ -255,8 +291,56 @@ export function handleSpaceLeave(
   return db.transaction(run)();
 }
 
+export function pruneStaleDisconnectedMemberships(
+  db: Database.Database,
+  args: {
+    nowMs: number;
+    staleAfterMs: number;
+    onlineSessionIds: ReadonlySet<string>;
+  },
+): void {
+  const cutoff = args.nowMs - args.staleAfterMs;
+  db.transaction(() => {
+    const rows = db
+      .prepare(
+        `SELECT m.space_id AS space_id,
+                m.session_id AS session_id,
+                COALESCE(cs.last_activity_ms, m.joined_at) AS last_seen_at
+         FROM space_memberships m
+         JOIN spaces s ON s.id = m.space_id
+         LEFT JOIN collaboration_status cs
+           ON cs.space_id = m.space_id AND cs.session_id = m.session_id
+         WHERE m.left_at IS NULL AND s.status IN ('active', 'idle')`,
+      )
+      .all() as Array<{
+      space_id: string;
+      session_id: string;
+      last_seen_at: number | null;
+    }>;
+
+    const touchedSpaceIds = new Set<string>();
+    for (const row of rows) {
+      if (args.onlineSessionIds.has(row.session_id)) {
+        continue;
+      }
+      const lastSeenAt = row.last_seen_at ?? 0;
+      if (lastSeenAt > cutoff) {
+        continue;
+      }
+      markMembershipLeft(db, row.space_id, row.session_id, args.nowMs);
+      touchedSpaceIds.add(row.space_id);
+    }
+
+    for (const spaceId of touchedSpaceIds) {
+      if (countActiveMembers(db, spaceId, args.nowMs) === 0) {
+        setSpaceIdle(db, spaceId, args.nowMs, LAST_MEMBER_ARCHIVE_TTL_MS);
+      }
+    }
+  })();
+}
+
 /**
- * Owner-only space destroy: marks active memberships left, deletes space row (CASCADE),
+ * Owner-only space destroy: marks active memberships left, marks the space destroyed,
  * returns session ids whose WebSockets should be closed.
  */
 export function handleSpaceDestroy(
@@ -286,7 +370,7 @@ export function handleSpaceDestroy(
     const space = getSpaceBySlug(db, slugNorm);
 
     if (!inserted) {
-      if (!space) {
+      if (!space || space.status === "destroyed") {
         return { kind: "destroyed", slug: slugNorm, closeSessionIds: [] };
       }
       return {
@@ -297,6 +381,81 @@ export function handleSpaceDestroy(
     }
 
     if (!space) {
+      return { kind: "error", error: "not_in_space" };
+    }
+    if (space.status === "destroyed") {
+      return { kind: "destroyed", slug: slugNorm, closeSessionIds: [] };
+    }
+
+    const ownerId = getSpaceOwnerSessionId(db, space.id);
+    if (ownerId !== args.sessionId) {
+      return { kind: "error", error: "not_space_owner" };
+    }
+
+    const sess = getSessionById(db, args.sessionId);
+    if (!sess?.isHuman) {
+      return { kind: "error", error: "not_space_owner" };
+    }
+
+    const rows = db
+      .prepare(
+        `SELECT session_id FROM space_memberships
+         WHERE space_id = ? AND left_at IS NULL`,
+      )
+      .all(space.id) as { session_id: string }[];
+
+    const closeSessionIds = rows.map((r) => r.session_id);
+
+    for (const sid of closeSessionIds) {
+      markMembershipLeft(db, space.id, sid, args.nowMs);
+    }
+
+    markSpaceDestroyed(db, space.id, args.nowMs);
+
+    return { kind: "destroyed", slug: slugNorm, closeSessionIds };
+  };
+
+  return db.transaction(run)();
+}
+
+export function handleSpaceArchive(
+  db: Database.Database,
+  args: {
+    sessionId: string;
+    idempotencyKey: string;
+    slugRaw: string;
+    nowMs: number;
+  },
+): SpaceArchiveOutcome {
+  const run = (): SpaceArchiveOutcome => {
+    let slugNorm: string;
+    try {
+      slugNorm = normalizeSpaceSlug(args.slugRaw);
+    } catch {
+      return { kind: "error", error: "invalid_slug" };
+    }
+
+    const { inserted } = tryRecordIdempotencyKey(
+      db,
+      args.idempotencyKey,
+      args.sessionId,
+      args.nowMs,
+    );
+
+    const space = getSpaceBySlug(db, slugNorm);
+
+    if (!inserted) {
+      if (!space || space.status === "archived" || space.status === "destroyed") {
+        return { kind: "archived", slug: slugNorm, closeSessionIds: [] };
+      }
+      return {
+        kind: "error",
+        error: "idempotency_replay_mismatch",
+        closeConnection: true,
+      };
+    }
+
+    if (!space || space.status === "destroyed") {
       return { kind: "error", error: "not_in_space" };
     }
 
@@ -323,9 +482,9 @@ export function handleSpaceDestroy(
       markMembershipLeft(db, space.id, sid, args.nowMs);
     }
 
-    deleteSpaceById(db, space.id);
+    setSpaceArchived(db, space.id, args.nowMs, LAST_MEMBER_ARCHIVE_TTL_MS);
 
-    return { kind: "destroyed", slug: slugNorm, closeSessionIds };
+    return { kind: "archived", slug: slugNorm, closeSessionIds };
   };
 
   return db.transaction(run)();
@@ -396,7 +555,7 @@ export function handleMembershipRemove(
 
     markMembershipLeft(db, args.spaceId, args.targetSessionId, args.nowMs);
     if (countActiveMembers(db, args.spaceId, args.nowMs) === 0) {
-      setSpaceArchived(db, args.spaceId, args.nowMs, LAST_MEMBER_ARCHIVE_TTL_MS);
+      setSpaceIdle(db, args.spaceId, args.nowMs, LAST_MEMBER_ARCHIVE_TTL_MS);
     }
     return {
       kind: "removed",
@@ -420,19 +579,27 @@ export function isSpaceDestroyEnvelope(envelope: Envelope): boolean {
   return envelope.kind === "control" && envelope.type === "space.destroy";
 }
 
+export function isSpaceArchiveEnvelope(envelope: Envelope): boolean {
+  return envelope.kind === "control" && envelope.type === "space.archive";
+}
+
 export function isMembershipRemoveEnvelope(envelope: Envelope): boolean {
   return envelope.kind === "control" && envelope.type === "membership.remove";
 }
 
-/** Periodic GC: remove archived spaces past expiry (memberships/transcript CASCADE). */
+/** Idle spaces auto-archive; archived spaces preserve transcript history. */
 export function pruneExpiredArchivedSpaces(
   db: Database.Database,
   nowMs: number,
 ): void {
   db.prepare(
-    `DELETE FROM spaces
-     WHERE status = 'archived'
-       AND expires_at IS NOT NULL
-       AND expires_at <= ?`,
-  ).run(nowMs);
+    `UPDATE spaces
+     SET status = 'archived', archived_at = ?, expires_at = NULL
+     WHERE status = 'idle' AND expires_at IS NOT NULL AND expires_at <= ?`,
+  ).run(nowMs, nowMs);
+  db.prepare(
+    `UPDATE spaces
+     SET expires_at = NULL
+     WHERE status = 'archived' AND expires_at IS NOT NULL`,
+  ).run();
 }

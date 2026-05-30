@@ -29,7 +29,7 @@ The executable comes from `TALKIE_CODEX_COMMAND` (default `codex`) and runs with
 | `TALKIE_CODEX_ARGS_JSON` | Optional JSON array of extra `codex exec` argv strings, inserted before `resume` on resumed turns |
 | `TALKIE_CODEX_JOIN_SLUG` | If set, join this space slug after `session.register` / `session.resume` |
 | `TALKIE_CODEX_SPACE_ID` | Optional compatibility setting; invalid UUID values are ignored when no join slug is used |
-| `TALKIE_CODEX_DISPLAY_NAME` / `TALKIE_CODEX_RUNTIME` / `TALKIE_CODEX_WORKSPACE` | Passed to `session.register` |
+| `TALKIE_CODEX_DISPLAY_NAME` / `TALKIE_CODEX_RUNTIME` / `TALKIE_CODEX_WORKSPACE_LABEL` | Passed to `session.register` |
 
 ## CLI
 

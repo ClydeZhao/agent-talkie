@@ -5,12 +5,14 @@ import {
   orchestratorDesignatePayloadSchema,
 } from "@agent-talkie/protocol";
 import { BrowserSessionBridge } from "../bridge/browser-session-bridge.js";
+import { connectJoinDashboardSession } from "../bridge/dashboard-session-startup.js";
 import { deriveHttpOriginFromWsUrl } from "../bridge/derive-http-origin.js";
 import {
   persistRelayGenerationIfMissing,
   probeRelayGenerationHealth,
   readBootstrapRelayGeneration,
 } from "../bridge/relay-generation.js";
+import { scheduleRelayStopStatusRefreshes } from "../bridge/relay-status-refresh.js";
 import { RELAY_GENERATION_KEY } from "../bridge/session-storage-keys.js";
 import "../errors/talkie-error-bar.js";
 import "../roster/talkie-roster.js";
@@ -158,6 +160,37 @@ void (async () => {
   picker.bridge = bridge;
   picker.store = store;
 
+  const refreshRelayStatus = async (): Promise<void> => {
+    try {
+      const res = await fetch(`${httpOrigin}/__agent-talkie/v1/relay/status`);
+      if (res.status !== 200) {
+        return;
+      }
+      const raw = (await res.json()) as {
+        running?: unknown;
+        activeConnectionCount?: unknown;
+        stopSupported?: unknown;
+        restartSupported?: unknown;
+      };
+      store.setRelayStatus({
+        running: raw.running === true,
+        activeConnectionCount:
+          typeof raw.activeConnectionCount === "number"
+            ? raw.activeConnectionCount
+            : 0,
+        stopSupported: raw.stopSupported === true,
+        restartSupported: raw.restartSupported === true,
+      });
+    } catch {
+      store.setRelayStatus({
+        running: false,
+        activeConnectionCount: 0,
+        stopSupported: false,
+        restartSupported: false,
+      });
+    }
+  };
+
   const initialSlug = (() => {
     const q = new URLSearchParams(location.search).get("space");
     return q && q.length > 0 ? q : "default";
@@ -168,8 +201,14 @@ void (async () => {
     roster.selfIsOwner = store.selfIsOwner;
     roster.selfSessionId = store.selfSessionId ?? "";
     picker.currentSlug = store.currentSpaceSlug;
+    picker.currentSpaceLabel = store.currentSpaceLabel;
     picker.selfIsOwner = store.selfIsOwner;
     picker.destroyedSlug = store.spaceDestroyedSlug;
+    picker.archivedSlug = store.spaceArchivedSlug;
+    shell.relayRunning = store.relayStatus.running;
+    shell.activeConnectionCount = store.relayStatus.activeConnectionCount;
+    shell.stopSupported = store.relayStatus.stopSupported;
+    shell.restartSupported = store.relayStatus.restartSupported;
     searchPanel.style.display = store.transcriptSearchPanelOpen ? "flex" : "none";
   });
 
@@ -222,12 +261,53 @@ void (async () => {
     }
   });
 
+  bridge.onSpaceArchivedWire((msg) => {
+    store.noteSpaceArchived(msg.slug);
+    if (msg.slug === store.currentSpaceSlug) {
+      store.stopSnapshotRefresh();
+      bridge.close();
+    }
+  });
+
   picker.addEventListener("talkie-space-refresh", () => {
     void pullSpaceSummary();
   });
 
   bridge.onConnectionHealthChange((s) => {
     shell.healthState = s;
+    void refreshRelayStatus();
+  });
+
+  let relayStatusTimer: number | undefined;
+
+  shell.addEventListener("talkie-relay-stop", () => {
+    if (relayStatusTimer !== undefined) {
+      window.clearInterval(relayStatusTimer);
+      relayStatusTimer = undefined;
+    }
+    void fetch(`${httpOrigin}/__agent-talkie/v1/relay/stop`, {
+      method: "POST",
+    }).finally(() => {
+      bridge.close();
+      scheduleRelayStopStatusRefreshes(refreshRelayStatus);
+    });
+  });
+
+  shell.addEventListener("talkie-relay-restart", () => {
+    if (relayStatusTimer !== undefined) {
+      window.clearInterval(relayStatusTimer);
+      relayStatusTimer = undefined;
+    }
+    void fetch(`${httpOrigin}/__agent-talkie/v1/relay/restart`, {
+      method: "POST",
+    }).finally(() => {
+      bridge.close();
+      shell.showRefreshBanner = true;
+      void refreshRelayStatus();
+      window.setTimeout(() => {
+        void refreshRelayStatus();
+      }, 1500);
+    });
   });
 
   bridge.onStaleUiChange(() => {
@@ -253,30 +333,9 @@ void (async () => {
   });
 
   try {
-    await bridge.connect({ autoReconnect: true });
-    let selfSessionId: string;
-    const resumed = await bridge.resumeFromStorage();
-    if (!resumed) {
-      if (
-        bridge.getConnectionHealth() !== "connected" ||
-        bridge.getNegotiatedEnvelopeVersion() === null
-      ) {
-        await bridge.connect({ autoReconnect: true });
-      }
-      const reg = await bridge.registerNewSession({
-        displayName: "Human",
-        runtime: "browser",
-        workspaceLabel: "dashboard",
-      });
-      selfSessionId = reg.sessionId;
-    } else {
-      selfSessionId = resumed.sessionId;
-    }
     store.setCurrentSpaceSlug(initialSlug);
-    const joined = await bridge.joinSpace({
-      slug: initialSlug,
-      idempotencyKey: crypto.randomUUID(),
-    });
+    const joined = await connectJoinDashboardSession(bridge, initialSlug);
+    const selfSessionId = joined.selfSessionId;
     store.setActiveSpaceId(joined.spaceId);
     store.setCurrentSpaceSlug(joined.slug);
 
@@ -295,11 +354,18 @@ void (async () => {
 
     await pullSpaceSummary();
     store.scheduleSnapshotRefresh(pullSpaceSummary, 10000);
+    await refreshRelayStatus();
+    relayStatusTimer = window.setInterval(() => {
+      void refreshRelayStatus();
+    }, 5000);
 
     persistRelayGenerationIfMissing(
       gen ?? sessionStorage.getItem(RELAY_GENERATION_KEY) ?? "",
     );
   } catch {
     shell.healthState = "disconnected";
+    shell.refreshBannerText =
+      "Could not open this Talkie space. Refresh to retry, or choose another active space.";
+    shell.showRefreshBanner = true;
   }
 })();

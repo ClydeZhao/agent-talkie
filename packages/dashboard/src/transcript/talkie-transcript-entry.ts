@@ -1,9 +1,7 @@
 import { LitElement, css, html } from "lit";
-import { classMap } from "lit/directives/class-map.js";
 import { customElement, property } from "lit/decorators.js";
 
 import type { DashboardStore, TranscriptLine } from "../store/dashboard-store.js";
-import { previewPayload } from "./payload-preview.js";
 
 function formatHms(ms: number): string {
   const d = new Date(ms);
@@ -20,23 +18,61 @@ export class TalkieTranscriptEntry extends LitElement {
       display: block;
     }
     .row {
-      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 13px;
       line-height: 1.45;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-        monospace;
       white-space: pre-wrap;
       word-break: break-word;
-      padding: 2px 8px;
+      padding: 8px 10px;
       color: var(--talkie-fg, #e6edf3);
     }
-    .row.control {
+    .system {
       color: var(--talkie-muted, #8b949e);
+      font-size: 12px;
+      text-align: center;
+      padding: 6px 8px;
     }
-    .row.conversation {
+    .bubble {
+      max-width: min(72ch, 88%);
+      border: 1px solid var(--talkie-border, #30363d);
+      border-radius: 8px;
+      background: var(--talkie-surface, #161b22);
+      padding: 8px 10px;
+      box-sizing: border-box;
+    }
+    .direct .bubble {
+      border-color: rgba(147, 197, 253, 0.55);
+    }
+    .meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--talkie-muted, #8b949e);
+      font-size: 11px;
+      margin-bottom: 3px;
+    }
+    .sender {
+      color: var(--talkie-fg, #e6edf3);
+      font-weight: 600;
+    }
+    .body {
       color: var(--talkie-fg, #e6edf3);
     }
-    .row.error-type {
-      color: var(--talkie-accent-danger, #f85149);
+    details.debug {
+      margin-top: 4px;
+      color: var(--talkie-muted, #8b949e);
+      font-size: 11px;
+    }
+    details.debug pre {
+      max-height: 220px;
+      overflow: auto;
+      white-space: pre-wrap;
+      border: 1px solid var(--talkie-border, #30363d);
+      border-radius: 6px;
+      padding: 8px;
+      background: var(--talkie-bg, #0d1117);
     }
   `;
 
@@ -46,28 +82,115 @@ export class TalkieTranscriptEntry extends LitElement {
   @property({ type: Object })
   store!: DashboardStore;
 
-  render() {
+  private _senderLabel(): string {
     const env = this.line.envelope;
-    const isErrorType = env.type.includes("error");
     const rosterRow = this.store.roster.get(env.sessionId);
-    const senderLabel =
+    return (
       rosterRow?.displayName ??
       (env.sessionId.length > 8
         ? `${env.sessionId.slice(0, 8)}…`
-        : env.sessionId);
-    const time = formatHms(this.line.receivedAtMs);
-    const preview = previewPayload(env.payload);
-    const lineText = `[${time}] ${senderLabel} (${env.kind} / ${env.type}): ${preview}`;
+        : env.sessionId)
+    );
+  }
 
-    return html`<span
-      class=${classMap({
-        row: true,
-        control: !isErrorType && env.kind === "control",
-        conversation: !isErrorType && env.kind === "conversation",
-        "error-type": isErrorType,
-      })}
-      >${lineText}</span
-    >`;
+  private _bodyText(): string {
+    const payload = this.line.envelope.payload;
+    const text = payload.text;
+    if (typeof text === "string") {
+      return text;
+    }
+    const summary = payload.summary;
+    if (typeof summary === "string") {
+      return summary;
+    }
+    return JSON.stringify(payload);
+  }
+
+  private _systemEventText(): string {
+    const env = this.line.envelope;
+    const sender = this._senderLabel();
+    switch (env.type) {
+      case "space.join":
+        return `${sender} joined the space`;
+      case "space.leave":
+        return `${sender} left the space`;
+      case "space.archive":
+        return `${sender} archived the space`;
+      case "space.destroy":
+        return `${sender} destroyed the space`;
+      case "orchestrator.designate":
+        return `${sender} changed the orchestrator`;
+      case "orchestrator.clear":
+        return `${sender} cleared the orchestrator`;
+      case "metadata.patch":
+        return this._metadataPatchText(sender);
+      default:
+        return `${sender} sent a system event`;
+    }
+  }
+
+  private _metadataPatchText(sender: string): string {
+    const payload = this.line.envelope.payload;
+    if (
+      payload !== null &&
+      typeof payload === "object" &&
+      "patch" in payload &&
+      payload.patch !== null &&
+      typeof payload.patch === "object"
+    ) {
+      const patch = payload.patch as Record<string, unknown>;
+      if (patch.progress === "blocked") {
+        const reason =
+          typeof patch.blockedReason === "string" && patch.blockedReason.trim() !== ""
+            ? `: ${patch.blockedReason}`
+            : "";
+        return `${sender} is blocked${reason}`;
+      }
+      if (typeof patch.progress === "string") {
+        return `${sender} is ${patch.progress}`;
+      }
+    }
+    return `${sender} updated status`;
+  }
+
+  private _debugJson(): string {
+    return JSON.stringify(this.line.envelope, null, 2);
+  }
+
+  render() {
+    const env = this.line.envelope;
+    const senderLabel = this._senderLabel();
+    const time = formatHms(this.line.receivedAtMs);
+    const directLabel = env.to !== undefined ? "Private" : "";
+
+    if (env.kind === "control") {
+      return html`
+        <div class="system">
+          <span>${time} · ${this._systemEventText()}</span>
+          <details class="debug">
+            <summary>Diagnostics</summary>
+            <pre>${this._debugJson()}</pre>
+          </details>
+        </div>
+      `;
+    }
+
+    return html`
+      <div class="row ${env.to !== undefined ? "direct" : ""}">
+        <div class="bubble">
+          <div class="meta">
+            <span class="sender">${senderLabel}</span>
+            <span>${time}</span>
+            ${directLabel ? html`<span>${directLabel}</span>` : null}
+          </div>
+          <div class="body">${this._bodyText()}</div>
+          <details class="debug">
+            <summary>Diagnostics</summary>
+            <pre>${this._debugJson()}</pre>
+          </details>
+        </div>
+      </div>
+    `;
   }
 }
 

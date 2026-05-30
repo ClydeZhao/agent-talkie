@@ -6,6 +6,7 @@ import {
   collaborationOrchestratorWireSchema,
   orchestratorClearedWireSchema,
   orchestratorDesignatedWireSchema,
+  spaceArchivedWireSchema,
 } from "./wire-schemas.js";
 import { DashboardStore, type RosterRow } from "../store/dashboard-store.js";
 
@@ -62,6 +63,8 @@ function baseRow(
     focus: "",
     progress: "idle",
     blockedReason: "",
+    presenceState: "offline",
+    lastSeenAtMs: null,
     ...overrides,
   };
 }
@@ -97,6 +100,14 @@ describe("orchestrator roster wire", () => {
         type: "collaboration.orchestrator",
         spaceId,
         orchestratorSessionId: null,
+      });
+      expect(r.success).toBe(true);
+    });
+
+    it("parses space.archived", () => {
+      const r = spaceArchivedWireSchema.safeParse({
+        type: "space.archived",
+        slug: "archive-me",
       });
       expect(r.success).toBe(true);
     });
@@ -216,6 +227,56 @@ describe("orchestrator roster wire", () => {
         spaceId,
         orchestratorSessionId: orch,
       });
+      bridge.close();
+    });
+
+    it("invokes onSpaceArchivedWire after join completes", async () => {
+      const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+      const connectP = bridge.connect();
+      await new Promise((r) => setTimeout(r, 0));
+      const sock = lastMockSocket!;
+      sock.simulateInbound({
+        type: "handshake.ack",
+        negotiatedVersion: 1,
+        relay: { minVersion: 1, maxVersion: 1 },
+      });
+      await connectP;
+
+      const sessionId = uuidv7();
+      const regP = bridge.registerNewSession({
+        displayName: "Human",
+        runtime: "browser",
+        workspaceLabel: "w",
+      });
+      sock.simulateInbound({
+        type: "session.registered",
+        sessionId,
+        reconnectSecret: "sec",
+        displayName: "Human",
+      });
+      await regP;
+
+      const joinP = bridge.joinSpace({
+        slug: "archive-me",
+        idempotencyKey: randomUUID(),
+      });
+      sock.simulateInbound({
+        type: "space.joined",
+        spaceId: randomUUID(),
+      });
+      await joinP;
+
+      const received: unknown[] = [];
+      bridge.onSpaceArchivedWire((m) => {
+        received.push(m);
+      });
+
+      sock.simulateInbound({
+        type: "space.archived",
+        slug: "archive-me",
+      });
+
+      expect(received).toEqual([{ type: "space.archived", slug: "archive-me" }]);
       bridge.close();
     });
   });

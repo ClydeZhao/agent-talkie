@@ -305,6 +305,8 @@ export class TalkieSessionClient {
   async joinSpace(args: {
     slug: string;
     idempotencyKey: string;
+    label?: string;
+    creatorOrchestrator?: boolean;
   }): Promise<{ spaceId: string; slug: string }> {
     const ws = this.ws;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -319,6 +321,13 @@ export class TalkieSessionClient {
 
     return new Promise((resolve, reject) => {
       this.pendingJoin = { resolve, reject, slug: args.slug };
+      const payload: Record<string, unknown> = { slug: args.slug };
+      if (args.label !== undefined) {
+        payload.label = args.label;
+      }
+      if (args.creatorOrchestrator !== undefined) {
+        payload.creatorOrchestrator = args.creatorOrchestrator;
+      }
       ws.send(
         JSON.stringify({
           version: 1,
@@ -326,7 +335,7 @@ export class TalkieSessionClient {
           sessionId: this.registeredSessionId,
           kind: "control",
           type: "space.join",
-          payload: { slug: args.slug },
+          payload,
           idempotencyKey: args.idempotencyKey,
         }),
       );

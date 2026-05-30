@@ -5,6 +5,7 @@ import { TalkieSessionClient } from "@agent-talkie/client";
 import type { Envelope } from "@agent-talkie/protocol";
 import {
   getOversightSpaceSummaryBySlug,
+  listOversightSpaces,
   listOversightTranscriptTailBySlug,
 } from "@agent-talkie/persistence";
 import {
@@ -33,7 +34,7 @@ type CliState = {
 type CliSessionSelector = {
   name?: string;
   runtime?: string;
-  workspace?: string;
+  workspaceLabel?: string;
 };
 
 function statePath(): string {
@@ -72,13 +73,13 @@ function sessionKey(args: {
   slug: string;
   name: string;
   runtime: string;
-  workspace: string;
+  workspaceLabel: string;
 }): string {
   return JSON.stringify({
     slug: args.slug,
     name: args.name,
     runtime: args.runtime,
-    workspace: args.workspace,
+    workspaceLabel: args.workspaceLabel,
   });
 }
 
@@ -96,7 +97,7 @@ async function resumeOrRegister(args: {
   key: string;
   name: string;
   runtime: string;
-  workspace: string;
+  workspaceLabel: string;
   slug: string;
 }): Promise<{ client: TalkieSessionClient; record: CliSessionRecord }> {
   let client = await connectClient();
@@ -123,7 +124,7 @@ async function resumeOrRegister(args: {
   const registered = await client.registerSession({
     displayName: args.name,
     runtime: args.runtime,
-    workspaceLabel: args.workspace,
+    workspaceLabel: args.workspaceLabel,
     isHuman: false,
   });
   const record: CliSessionRecord = {
@@ -131,7 +132,7 @@ async function resumeOrRegister(args: {
     reconnectSecret: registered.reconnectSecret,
     displayName: registered.displayName,
     runtime: args.runtime,
-    workspaceLabel: args.workspace,
+    workspaceLabel: args.workspaceLabel,
     slug: args.slug,
     lastSeenBySlug: {},
   };
@@ -144,8 +145,10 @@ async function joinWithRecord(args: {
   key: string;
   name: string;
   runtime: string;
-  workspace: string;
+  workspaceLabel: string;
   slug: string;
+  label?: string;
+  creatorOrchestrator?: boolean;
 }): Promise<{
   client: TalkieSessionClient;
   record: CliSessionRecord;
@@ -153,15 +156,72 @@ async function joinWithRecord(args: {
   slug: string;
 }> {
   const { client, record } = await resumeOrRegister(args);
-  const joined = await client.joinSpace({
+  const joinArgs: Parameters<TalkieSessionClient["joinSpace"]>[0] = {
     slug: args.slug,
     idempotencyKey: randomUUID(),
-  });
+  };
+  if (args.label !== undefined) {
+    joinArgs.label = args.label;
+  }
+  if (args.creatorOrchestrator !== undefined) {
+    joinArgs.creatorOrchestrator = args.creatorOrchestrator;
+  }
+  const joined = await client.joinSpace(joinArgs);
   args.state.currentKey = args.key;
   record.slug = joined.slug;
   args.state.sessions[args.key] = record;
   writeState(args.state);
   return { client, record, spaceId: joined.spaceId, slug: joined.slug };
+}
+
+function generateSpaceSlug(nowMs = Date.now()): string {
+  return `talkie-${nowMs.toString(36)}-${randomUUID().slice(0, 8)}`;
+}
+
+function generateSpaceLabel(now = new Date()): string {
+  const yyyy = String(now.getFullYear());
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const sec = String(now.getSeconds()).padStart(2, "0");
+  return `Talkie Space ${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}`;
+}
+
+function buildJoinPrompt(args: { slug: string; label: string }): string {
+  return [
+    "Join this local Agent Talkie Space.",
+    `Space label: ${args.label}`,
+    `Space slug: ${args.slug}`,
+    "Use your Agent Talkie runtime tooling to join this slug, then send a short hello/ack to the orchestrator.",
+    "Do not ask the human to run low-level join/send/pull transport commands.",
+  ].join("\n");
+}
+
+function extractSlugFromJoinPrompt(prompt: string): string {
+  const explicit = /Space slug:\s*([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(prompt);
+  if (explicit?.[1]) {
+    return explicit[1].toLowerCase();
+  }
+  const uri = /talkie:\/\/space\/([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(prompt);
+  if (uri?.[1]) {
+    return uri[1].toLowerCase();
+  }
+  throw new Error("Could not find a Talkie space slug in the join prompt.");
+}
+
+function assertPromptReferencesActiveSpace(slug: string): void {
+  const db = openRelayDatabase();
+  try {
+    const found = listOversightSpaces(db).some((space) => space.slug === slug);
+    if (!found) {
+      throw new Error(
+        `Join prompt references a space that is not active locally: ${slug}`,
+      );
+    }
+  } finally {
+    db.close();
+  }
 }
 
 function getCurrentSession(state: CliState): {
@@ -179,7 +239,7 @@ function parsedSessionKey(key: string):
   | {
       name?: string;
       runtime?: string;
-      workspace?: string;
+      workspaceLabel?: string;
       slug?: string;
     }
   | undefined {
@@ -189,7 +249,7 @@ function parsedSessionKey(key: string):
       return parsed as {
         name?: string;
         runtime?: string;
-        workspace?: string;
+        workspaceLabel?: string;
         slug?: string;
       };
     }
@@ -203,7 +263,7 @@ function selectorProvided(selector: CliSessionSelector): boolean {
   return (
     selector.name !== undefined ||
     selector.runtime !== undefined ||
-    selector.workspace !== undefined
+    selector.workspaceLabel !== undefined
   );
 }
 
@@ -236,9 +296,9 @@ function getSelectedSession(
       return false;
     }
     if (
-      selector.workspace !== undefined &&
-      record.workspaceLabel !== selector.workspace &&
-      parsedKey?.workspace !== selector.workspace
+      selector.workspaceLabel !== undefined &&
+      record.workspaceLabel !== selector.workspaceLabel &&
+      parsedKey?.workspaceLabel !== selector.workspaceLabel
     ) {
       return false;
     }
@@ -252,7 +312,7 @@ function getSelectedSession(
   }
   if (matches.length > 1) {
     throw new Error(
-      `Multiple CLI sessions match selector in space ${slug}. Add --name, --runtime, or --workspace to disambiguate.`,
+      `Multiple CLI sessions match selector in space ${slug}. Add --name, --runtime, or --workspace-label to disambiguate.`,
     );
   }
 
@@ -316,22 +376,22 @@ export async function runJoinCommand(opts: {
   slug: string;
   name: string;
   runtime: string;
-  workspace?: string;
+  workspaceLabel?: string;
 }): Promise<void> {
   const state = readState();
-  const workspace = opts.workspace ?? basename(process.cwd());
+  const workspaceLabel = opts.workspaceLabel ?? basename(process.cwd());
   const key = sessionKey({
     slug: opts.slug,
     name: opts.name,
     runtime: opts.runtime,
-    workspace,
+    workspaceLabel,
   });
   const { client, record, spaceId, slug } = await joinWithRecord({
     state,
     key,
     name: opts.name,
     runtime: opts.runtime,
-    workspace,
+    workspaceLabel,
     slug: opts.slug,
   });
   client.close();
@@ -346,6 +406,98 @@ export async function runJoinCommand(opts: {
       workspaceLabel: record.workspaceLabel,
     }),
   );
+}
+
+export async function runCreateSpaceCommand(opts: {
+  name: string;
+  runtime: string;
+  workspaceLabel?: string;
+  creatorOrchestrator?: boolean;
+  dashboardBaseUrl?: string;
+}): Promise<{
+  ok: true;
+  slug: string;
+  label: string;
+  spaceId: string;
+  sessionId: string;
+  displayName: string;
+  runtime: string;
+  workspaceLabel: string;
+  orchestratorSessionId: string | null;
+  dashboardUrl: string | undefined;
+  joinPrompt: string;
+}> {
+  const state = readState();
+  const workspaceLabel = opts.workspaceLabel ?? basename(process.cwd());
+  const slug = generateSpaceSlug();
+  const label = generateSpaceLabel();
+  const key = sessionKey({
+    slug,
+    name: opts.name,
+    runtime: opts.runtime,
+    workspaceLabel,
+  });
+  const { client, record, spaceId } = await joinWithRecord({
+    state,
+    key,
+    name: opts.name,
+    runtime: opts.runtime,
+    workspaceLabel,
+    slug,
+    label,
+    creatorOrchestrator: opts.creatorOrchestrator,
+  });
+  client.close();
+
+  const db = openRelayDatabase();
+  try {
+    const summary = getOversightSpaceSummaryBySlug(db, slug);
+    const persistedLabel = summary?.label ?? label;
+    const dashboardUrl =
+      opts.dashboardBaseUrl === undefined
+        ? undefined
+        : `${opts.dashboardBaseUrl}?space=${encodeURIComponent(slug)}`;
+    return {
+      ok: true,
+      slug,
+      label: persistedLabel,
+      spaceId,
+      sessionId: record.sessionId,
+      displayName: record.displayName,
+      runtime: record.runtime,
+      workspaceLabel: record.workspaceLabel,
+      orchestratorSessionId: summary?.orchestratorSessionId ?? null,
+      dashboardUrl,
+      joinPrompt: buildJoinPrompt({ slug, label: persistedLabel }),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+export async function runListActiveSpacesCommand(): Promise<void> {
+  const db = openRelayDatabase();
+  try {
+    console.log(JSON.stringify({ ok: true, spaces: listOversightSpaces(db) }));
+  } finally {
+    db.close();
+  }
+}
+
+export async function runJoinFromPromptCommand(opts: {
+  prompt: string;
+  name: string;
+  runtime: string;
+  workspaceLabel?: string;
+}): Promise<void> {
+  const slug = extractSlugFromJoinPrompt(opts.prompt);
+  assertPromptReferencesActiveSpace(slug);
+  await runJoinCommand({
+    slug,
+    name: opts.name,
+    runtime: opts.runtime,
+    workspaceLabel: opts.workspaceLabel,
+  });
 }
 
 export async function runSendCommand(
@@ -365,7 +517,7 @@ export async function runSendCommand(
     key,
     name: record.displayName,
     runtime: record.runtime,
-    workspace: record.workspaceLabel,
+    workspaceLabel: record.workspaceLabel,
     slug: opts.slug,
   });
   const to = resolveRecipient(slug, opts.to);

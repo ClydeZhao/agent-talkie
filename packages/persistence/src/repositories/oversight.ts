@@ -12,20 +12,25 @@ export type OversightMember = {
   blockedReason: string | null;
   runtime: string;
   workspaceLabel: string;
+  lastSeenAtMs: number | null;
 };
 
 export type OversightSpaceSummary = {
   spaceId: string;
   slug: string;
+  label: string;
+  status: string;
   ownerSessionId: string | null;
   orchestratorSessionId: string | null;
   memberCount: number;
   members: OversightMember[];
 };
 
-/** Row for `GET /oversight/spaces` (active spaces only; see {@link listOversightSpaces}). */
+/** Row for `GET /oversight/spaces` (active/idle spaces only; see {@link listOversightSpaces}). */
 export type OversightSpaceListRow = {
   slug: string;
+  label: string;
+  status: "active" | "idle";
   memberCount: number;
   ownerSessionId: string | null;
   orchestratorSessionId: string | null;
@@ -33,29 +38,35 @@ export type OversightSpaceListRow = {
 
 /**
  * Lists active spaces with member counts (`left_at IS NULL`) and oversight ids.
- * Excludes archived/expired rows. Sorted by `slug` ascending.
+ * Excludes archived/destroyed rows. Sorted by `slug` ascending.
  */
 export function listOversightSpaces(db: Database.Database): OversightSpaceListRow[] {
   const rows = db
     .prepare(
       `SELECT s.id AS space_id,
               s.slug AS slug,
+              COALESCE(s.label, s.slug) AS label,
+              s.status AS status,
               s.orchestrator_session_id AS orchestrator_session_id,
               (SELECT COUNT(*) FROM space_memberships m
                WHERE m.space_id = s.id AND m.left_at IS NULL) AS member_count
        FROM spaces s
-       WHERE s.status = 'active'
+       WHERE s.status IN ('active', 'idle')
        ORDER BY s.slug ASC`,
     )
     .all() as Array<{
       space_id: string;
       slug: string;
+      label: string;
+      status: "active" | "idle";
       orchestrator_session_id: string | null;
       member_count: number;
     }>;
 
   return rows.map((r) => ({
     slug: r.slug,
+    label: r.label,
+    status: r.status,
     memberCount: Number(r.member_count),
     ownerSessionId: getSpaceOwnerSessionId(db, r.space_id),
     orchestratorSessionId: r.orchestrator_session_id,
@@ -68,6 +79,9 @@ export function getOversightSpaceSummaryBySlug(
 ): OversightSpaceSummary | undefined {
   const space = getSpaceBySlug(db, slug);
   if (!space) {
+    return undefined;
+  }
+  if (space.status === "destroyed") {
     return undefined;
   }
 
@@ -87,7 +101,8 @@ export function getOversightSpaceSummaryBySlug(
               COALESCE(cp.role, '') AS role,
               COALESCE(cp.focus, '') AS focus,
               COALESCE(cs.progress, 'idle') AS progress,
-              cs.blocked_reason AS blocked_reason
+              cs.blocked_reason AS blocked_reason,
+              cs.last_activity_ms AS last_seen_at_ms
        FROM space_memberships m
        JOIN sessions sess ON sess.id = m.session_id
        LEFT JOIN collaboration_profile cp
@@ -107,11 +122,14 @@ export function getOversightSpaceSummaryBySlug(
       focus: string;
       progress: string;
       blocked_reason: string | null;
+      last_seen_at_ms: number | null;
     }>;
 
   return {
     spaceId: space.id,
     slug: space.slug,
+    label: space.label,
+    status: space.status,
     ownerSessionId,
     orchestratorSessionId: orchRow?.orchestrator_session_id ?? null,
     memberCount: memberRows.length,
@@ -125,6 +143,7 @@ export function getOversightSpaceSummaryBySlug(
       blockedReason: r.blocked_reason,
       runtime: r.runtime,
       workspaceLabel: r.workspace_label,
+      lastSeenAtMs: r.last_seen_at_ms,
     })),
   };
 }

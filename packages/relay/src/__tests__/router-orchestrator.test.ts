@@ -43,6 +43,13 @@ function closedWs(): WebSocket {
   } as unknown as WebSocket;
 }
 
+function transcriptCount(db: ReturnType<typeof openDatabase>, spaceId: string): number {
+  const row = db
+    .prepare("SELECT COUNT(*) AS n FROM transcript_entries WHERE space_id = ?")
+    .get(spaceId) as { n: number };
+  return row.n;
+}
+
 function convEnvelope(
   sessionId: string,
   spaceId: string,
@@ -147,7 +154,7 @@ describe("routeEnvelope orchestrator defaults", () => {
     expect(err.error).toBe("no_orchestrator");
   });
 
-  it("human undirected conversation when orchestrator socket not open yields orchestrator_offline", () => {
+  it("human undirected conversation queues for an active orchestrator whose socket is not open", () => {
     const db = openDatabase(":memory:");
     migrate(db);
     const now = Date.now();
@@ -178,12 +185,52 @@ describe("routeEnvelope orchestrator defaults", () => {
     });
 
     expect(wsH.sent).toHaveLength(1);
+    expect(JSON.parse(wsH.sent[0]!) as Envelope).toMatchObject({
+      sessionId: idH,
+      kind: "conversation",
+      payload: { text: "hi" },
+    });
+    expect(transcriptCount(db, spaceId)).toBe(1);
+  });
+
+  it("human undirected conversation to an inactive orchestrator fails without transcript append", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const now = Date.now();
+    const { id: idH } = createSession(db, {
+      displayName: "human",
+      runtime: "t",
+      workspaceLabel: "w",
+      isHuman: true,
+    });
+    const { id: idA } = createSession(db, {
+      displayName: "agent",
+      runtime: "t",
+      workspaceLabel: "w",
+    });
+    const { id: spaceId } = insertSpaceWithSlug(db, { slug: "inactive-orch", nowMs: now });
+    insertMembership(db, { spaceId, sessionId: idH, nowMs: now });
+    tryAssignSpaceOwnerIfUnsetForHuman(db, { spaceId, sessionId: idH });
+    setOrchestratorSessionId(db, spaceId, idA, now);
+
+    const wsH = captureWs();
+    const wsA = captureWs();
+    routeEnvelope({
+      db,
+      envelope: convEnvelope(idH, spaceId),
+      senderWs: wsH,
+      getSocketForSession: (sid) => (sid === idA ? wsA : wsH),
+    });
+
+    expect(wsA.sent).toHaveLength(0);
+    expect(wsH.sent).toHaveLength(1);
     const err = JSON.parse(wsH.sent[0]!) as {
       type?: string;
       error?: string;
     };
     expect(err.type).toBe("protocol.error");
     expect(err.error).toBe("orchestrator_offline");
+    expect(transcriptCount(db, spaceId)).toBe(0);
   });
 
   it("non-human undirected conversation fans out to other members", () => {

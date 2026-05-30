@@ -1,39 +1,50 @@
 # agent-talkie 里程碑
 
-状态：当前基线  
-最后更新：2026-04-28
+状态：当前方向
+最后更新：2026-05-31
 
-这份文档跟踪产品交付顺序。`PRD.md` 定义长期产品模式，`docs/architecture.md` 定义实现架构和不变量，具体当前里程碑定义放在 `docs/milestones/`。
+这份文档只跟踪长期有用的交付方向。`PRD.md` 定义产品模式，`docs/architecture.md` 定义实现架构和不变量，当前交付目标放在 `docs/milestones/`。
 
-## 当前里程碑：v3.0 Local Orchestrated Product
+## 当前目标：Local Orchestrator Dashboard
 
-目标：交付一个可以给用户日常使用的单机版产品形态。用户可以在一个 runtime 里创建 Talkie Space，在另一个 runtime 里显式加入，并通过 orchestrator-first 的 IM 风格 dashboard 监督协作。
+目标：把已经验证的 Codex CLI + Claude Code 本地协作闭环产品化成一个人类可直接操作的 orchestrator-first dashboard。用户打开 dashboard 后，应能看懂当前 space、orchestrator、runtime 可用性、默认讨论、private intervention 和失败状态，而不是阅读 relay/debug console。
 
-详细定义：`docs/milestones/v3-local-orchestrated-product.md`
-
-执行计划：`docs/milestones/v3-local-orchestrated-product-plan.md`
+详细定义：`docs/milestones/local-orchestrator-dashboard.md`
 
 范围：
 
-- Codex App、Codex CLI、Cursor App 在同一台机器上的协作
-- runtime-native create/join flow，而不是让用户手跑 `join/send/pull`
-- dashboard 打开后显示可复制的 join prompt
-- dashboard 默认显示 Human ↔ Orchestrator discussion
-- participant private chat 作为微操/介入路径
-- active/idle/archived/destroyed space lifecycle
-- 干净的 human/session/participant lifecycle
-- relay lifecycle 可见、可恢复
-- setup diagnostics 和真实本地 UAT
+- dashboard 默认 Human -> Orchestrator 讨论路径清晰、可投递、可观察
+- roster 变成 runtime 可用性和介入入口，而不是单纯 session 列表
+- private intervention 对选中 participant 可投递，或明确阻止不可响应目标
+- transcript 默认可读，raw protocol payload 退到显式 debug affordance
+- active-space list 不把空、stale、无 orchestrator 或全员不可响应的 space 呈现成正常可聊
+- dashboard reload 不制造重复 active human participant
 
-明确不做：
+当前不追：
 
+- Cursor App 进入同一个最终 gate
 - 多机、多人、远程 relay trust
 - TLS、tunnel、access token 或跨网络 invite
 - hosted execution
 - 通用项目管理 harness
 - 集中化各 runtime 的私有上下文
+- 把 dashboard 变成任务管理系统或人工消息搬运台
 
 ## 已交付基线
+
+### Codex CLI + Claude Code 最小协作闭环
+
+状态：已验证，2026-05-30
+
+核心结果：
+
+- Codex CLI 和 Claude Code 可以在同一本地 relay 上加入同一个 Talkie Space。
+- 两个 runtime 能接收后续消息、回复、ack，并保留自己的原生上下文。
+- runtime 之间可以直接讨论；人类不需要手动复制消息充当中转。
+- dashboard 可以观察 roster、transcript、orchestrator/default discussion 和 private intervention 的协作状态。
+- 失败时能看见 runtime 没有接收、没有回复、离线或需要人工原生处理。
+
+详细定义：`docs/milestones/local-codex-claude-loop.md`
 
 ### v2.0 Web Dashboard
 
@@ -69,11 +80,12 @@
 
 ## 后续里程碑方向
 
-v3.0 完成后，再重新评估是否推进以下方向：
+Local Orchestrator Dashboard 通过后，再重新评估是否推进以下方向：
 
+- Cursor App 作为第三个本地 runtime 加入同一闭环
 - 多用户、多机器、remote relay 的显式信任与邀请模型
 - 团队 bring-your-own-agent 协作空间
 - 更丰富的 runtime 集成
 - 哪些 harness pattern 应保留为用户定义，哪些应成为产品内建默认
 
-这些方向不能反向污染 v3.0。当前目标是先把单机多 runtime 产品形态做顺。
+这些方向不能反向污染当前目标。现在先把已经验证的本地 runtime loop 变成用户能稳定理解和操作的 dashboard 产品面。

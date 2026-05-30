@@ -29,10 +29,13 @@ export {
   getSpaceBySlug,
   insertMembership,
   insertSpaceWithSlug,
+  markSpaceDestroyed,
   markMembershipLeft,
   normalizeSpaceSlug,
   reviveSpaceFromArchived,
+  setSpaceActive,
   setSpaceArchived,
+  setSpaceIdle,
   type SpaceStatus,
 } from "./repositories/spaces.js";
 export {

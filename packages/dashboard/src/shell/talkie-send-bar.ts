@@ -164,12 +164,28 @@ export class TalkieSendBar extends LitElement {
         (row) => row.orchestrator,
       );
       return orchestrator
-        ? `To: Orchestrator (${orchestrator.displayName})`
-        : "To: Orchestrator";
+        ? `Orchestrator discussion: ${orchestrator.displayName}`
+        : "Orchestrator discussion";
     }
     const row = this.store.roster.get(sid);
     const name = row?.displayName ?? `${sid.slice(0, 8)}…`;
-    return `To: ${name}`;
+    return `Private chat with ${name}`;
+  }
+
+  private _targetPresenceHint(): string {
+    const sid = this.store.sendTargetSessionId;
+    const row =
+      sid === null
+        ? Array.from(this.store.roster.values()).find((r) => r.orchestrator)
+        : this.store.roster.get(sid);
+    if (!row) {
+      return "";
+    }
+    if (row.presenceState === "online") {
+      return "";
+    }
+    const target = sid === null ? "orchestrator" : "participant";
+    return `${target} is ${row.presenceState}; messages are queued until that runtime checks Talkie.`;
   }
 
   private _onDismissClick(): void {
@@ -235,6 +251,7 @@ export class TalkieSendBar extends LitElement {
     const showOrchHint =
       this.store.sendTargetSessionId === null &&
       this.store.isDefaultOrchestratorSendBlocked;
+    const presenceHint = this._targetPresenceHint();
 
     return html`
       <div class="target-row">
@@ -255,6 +272,7 @@ export class TalkieSendBar extends LitElement {
             No orchestrator selected
           </div>`
         : null}
+      ${presenceHint ? html`<div class="hint">${presenceHint}</div>` : null}
       <div class="row">
         <textarea
           rows="2"

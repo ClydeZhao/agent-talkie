@@ -13,7 +13,7 @@ import { ensureRelayRunning, stopRelay } from "@agent-talkie/supervisor";
 
 const repoRoot = process.cwd();
 const dataDir = mkdtempSync(join(tmpdir(), "agent-talkie-local-smoke-"));
-const slug = `local-smoke-${Date.now()}`;
+let slug = "";
 
 function createFakeCodexSpawn() {
   return (_cmd, args) => {
@@ -98,21 +98,10 @@ const abort = new AbortController();
 try {
   process.env.AGENT_TALKIE_DATA_DIR = dataDir;
   process.env.AGENT_TALKIE_RELAY_PORT = "0";
-  process.env.TALKIE_CODEX_JOIN_SLUG = slug;
   process.env.TALKIE_CODEX_DISPLAY_NAME = "codex-smoke";
   process.env.TALKIE_CODEX_RUNTIME = "adapter-codex";
 
   relay = await ensureRelayRunning({});
-  let markCodexReady;
-  const codexReady = new Promise((resolve) => {
-    markCodexReady = resolve;
-  });
-  codexRun = runCodexAdapter({
-    spawn: createFakeCodexSpawn(),
-    signal: abort.signal,
-    onReady: markCodexReady,
-  });
-
   mcpClient = new McpClient({ name: "agent-talkie-smoke", version: "0.0.0" });
   mcpTransport = new StdioClientTransport({
     command: "node",
@@ -125,16 +114,46 @@ try {
       AGENT_TALKIE_RELAY_PORT: String(relay.port),
       TALKIE_MCP_DISPLAY_NAME: "cursor-smoke",
       TALKIE_MCP_RUNTIME: "adapter-cursor-mcp",
-      TALKIE_MCP_WORKSPACE: repoRoot,
+      TALKIE_MCP_WORKSPACE_LABEL: repoRoot,
       TALKIE_MCP_IS_HUMAN: "0",
     },
   });
   await mcpClient.connect(mcpTransport);
 
-  await mcpClient.callTool({
-    name: "join_space",
-    arguments: { slug, name: "cursor-smoke" },
+  const created = await mcpClient.callTool({
+    name: "create_space",
+    arguments: { name: "cursor-smoke", workspaceLabel: repoRoot },
   });
+  const createdPayload = JSON.parse(getTextContent(created));
+  slug = createdPayload.slug;
+  if (
+    typeof slug !== "string" ||
+    typeof createdPayload.joinPrompt !== "string" ||
+    !createdPayload.joinPrompt.includes(`Space slug: ${slug}`)
+  ) {
+    throw new Error("create_space did not return a usable product join prompt");
+  }
+
+  const listed = await mcpClient.callTool({
+    name: "list_active_spaces",
+    arguments: {},
+  });
+  const listedPayload = JSON.parse(getTextContent(listed));
+  if (!listedPayload.spaces?.some?.((space) => space.slug === slug)) {
+    throw new Error("list_active_spaces did not include the created space");
+  }
+
+  process.env.TALKIE_CODEX_JOIN_SLUG = slug;
+  let markCodexReady;
+  const codexReady = new Promise((resolve) => {
+    markCodexReady = resolve;
+  });
+  codexRun = runCodexAdapter({
+    spawn: createFakeCodexSpawn(),
+    signal: abort.signal,
+    onReady: markCodexReady,
+  });
+
   await mcpClient.callTool({ name: "pull_inbox", arguments: { slug, limit: 1 } });
   await codexReady;
 
@@ -200,6 +219,8 @@ try {
         ok: true,
         slug,
         relayPort: relay.port,
+        label: createdPayload.label,
+        joinPromptIncludesSlug: createdPayload.joinPrompt.includes(slug),
         codexSessionId: codexMember.sessionId,
         cursorSessionId: cursorMember.sessionId,
         memberCount: summary.memberCount,

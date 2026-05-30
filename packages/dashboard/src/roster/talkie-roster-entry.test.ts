@@ -16,6 +16,8 @@ function blockedRow(reason: string): RosterRow {
     workspaceLabel: "repo",
     owner: false,
     orchestrator: false,
+    presenceState: "online",
+    lastSeenAtMs: 1_700_000_000_000,
   };
 }
 
@@ -54,6 +56,51 @@ it("hides blockedReason element when progress is not blocked", async () => {
 
   const reasonEl = el.shadowRoot?.querySelector(".blocked-reason");
   expect(reasonEl).toBeNull();
+
+  document.body.removeChild(el);
+});
+
+it("renders presence state separately from progress", async () => {
+  const el = document.createElement("talkie-roster-entry");
+  const row = blockedRow("");
+  row.progress = "idle";
+  row.presenceState = "stale";
+  (el as any).row = row;
+  document.body.appendChild(el);
+  await (el as any).updateComplete;
+
+  const presenceEl = el.shadowRoot?.querySelector(".presence-label");
+  expect(presenceEl?.textContent).toContain("stale");
+
+  document.body.removeChild(el);
+});
+
+it("renders last activity time for roster rows", async () => {
+  const el = document.createElement("talkie-roster-entry");
+  const row = blockedRow("");
+  row.lastSeenAtMs = Date.UTC(2026, 4, 2, 9, 8, 7);
+  (el as any).row = row;
+  document.body.appendChild(el);
+  await (el as any).updateComplete;
+
+  const lastSeenEl = el.shadowRoot?.querySelector(".last-seen");
+  expect(lastSeenEl?.textContent).toContain("Last seen 09:08:07Z");
+
+  document.body.removeChild(el);
+});
+
+it("labels stale owner cleanup action explicitly", async () => {
+  const el = document.createElement("talkie-roster-entry");
+  const row = blockedRow("");
+  row.presenceState = "stale";
+  row.sessionId = "stale-agent";
+  (el as any).row = row;
+  (el as any).selfIsOwner = true;
+  (el as any).selfSessionId = "owner";
+  document.body.appendChild(el);
+  await (el as any).updateComplete;
+
+  expect(el.shadowRoot?.textContent).toContain("Clear stale participant");
 
   document.body.removeChild(el);
 });

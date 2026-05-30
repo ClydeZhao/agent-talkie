@@ -34,7 +34,7 @@ export async function runStdioAdapter(): Promise<void> {
   await client.registerSession({
     displayName: process.env.TALKIE_STDIO_DISPLAY_NAME ?? "stdio-adapter",
     runtime: process.env.TALKIE_STDIO_RUNTIME ?? "adapter-stdio",
-    workspaceLabel: process.env.TALKIE_STDIO_WORKSPACE ?? ".",
+    workspaceLabel: process.env.TALKIE_STDIO_WORKSPACE_LABEL ?? ".",
   });
 
   const queue = createBoundedQueue<Envelope>(maxQueue);

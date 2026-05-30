@@ -30,11 +30,15 @@ export type OversightMemberSnapshot = {
   blockedReason: string | null;
   runtime: string;
   workspaceLabel: string;
+  presenceState?: "online" | "offline" | "stale";
+  lastSeenAtMs?: number | null;
 };
 
 export type OversightSpaceSummary = {
   spaceId: string;
   slug: string;
+  label: string;
+  status: string;
   ownerSessionId: string | null;
   orchestratorSessionId: string | null;
   memberCount: number;
@@ -44,6 +48,8 @@ export type OversightSpaceSummary = {
 /** Mirrors `GET /oversight/spaces` rows (inline to avoid dashboard → persistence dependency). */
 export type SpaceListRow = {
   slug: string;
+  label: string;
+  status: "active" | "idle";
   memberCount: number;
   ownerSessionId: string | null;
   orchestratorSessionId: string | null;
@@ -61,6 +67,45 @@ export type RosterRow = {
   focus: string;
   progress: string;
   blockedReason: string;
+  presenceState: "online" | "offline" | "stale";
+  lastSeenAtMs: number | null;
+};
+
+const GENERIC_HUMAN_DISPLAY_NAME_RE = /^human(?:[-_ ]?\d+)?$/i;
+const GENERIC_DASHBOARD_DISPLAY_NAME_RE = /^dashboard(?:[-_ ]?\d+)?$/i;
+
+function displayNameForRosterMember(
+  member: OversightMemberSnapshot,
+  selfSessionId: string,
+): string {
+  if (member.sessionId === selfSessionId) {
+    return "You";
+  }
+  const rawName = member.displayName.trim();
+  const runtime = member.runtime.trim().toLowerCase();
+  if (
+    member.isHuman &&
+    runtime === "browser" &&
+    (rawName === "" ||
+      GENERIC_HUMAN_DISPLAY_NAME_RE.test(rawName) ||
+      GENERIC_DASHBOARD_DISPLAY_NAME_RE.test(rawName))
+  ) {
+    return "Dashboard";
+  }
+  if (
+    member.isHuman &&
+    (rawName === "" || GENERIC_HUMAN_DISPLAY_NAME_RE.test(rawName))
+  ) {
+    return "Human participant";
+  }
+  return rawName || `${member.sessionId.slice(0, 8)}...`;
+}
+
+export type RelayStatusSnapshot = {
+  running: boolean;
+  activeConnectionCount: number;
+  stopSupported: boolean;
+  restartSupported: boolean;
 };
 
 export type TranscriptLine = {
@@ -89,10 +134,19 @@ export class DashboardStore {
   activeSpaceId: string | null = null;
   /** Slug for the active space (URL / space-summary); default join uses `"default"`. */
   currentSpaceSlug = "default";
+  currentSpaceLabel = "default";
   /** Cached list from `GET /oversight/spaces` for the space picker. */
   spacesList: SpaceListRow[] = [];
   /** Set when relay notifies this tab that the current space was destroyed (WS will drop). */
   spaceDestroyedSlug: string | null = null;
+  /** Set when relay notifies this tab that the current space was archived (WS will drop). */
+  spaceArchivedSlug: string | null = null;
+  relayStatus: RelayStatusSnapshot = {
+    running: false,
+    activeConnectionCount: 0,
+    stopSupported: false,
+    restartSupported: false,
+  };
   /** `null` -> default human->orchestrator (omit `to`); otherwise direct `to` session. */
   sendTargetSessionId: string | null = null;
   selfSessionId: string | null = null;
@@ -231,17 +285,27 @@ export class DashboardStore {
     if (this.activeSpaceId === id) {
       return;
     }
-    this.transcriptDedupe.clear();
-    this.transcriptLines = [];
-    this.transcriptSearchIndex.removeAll();
+    this.clearTranscriptState();
     this.activeSpaceId = id;
     this.sendTargetSessionId = null;
     this.spaceDestroyedSlug = null;
+    this.spaceArchivedSlug = null;
     this.notify();
+  }
+
+  private clearTranscriptState(): void {
+    this.transcriptDedupe.clear();
+    this.transcriptLines = [];
+    this.transcriptSearchIndex.removeAll();
   }
 
   setSpacesList(rows: SpaceListRow[]): void {
     this.spacesList = rows;
+    this.notify();
+  }
+
+  setRelayStatus(status: RelayStatusSnapshot): void {
+    this.relayStatus = status;
     this.notify();
   }
 
@@ -250,11 +314,31 @@ export class DashboardStore {
       return;
     }
     this.currentSpaceSlug = slug;
+    this.currentSpaceLabel = slug;
     this.notify();
   }
 
   noteSpaceDestroyed(slug: string): void {
     this.spaceDestroyedSlug = slug;
+    this.spacesList = this.spacesList.filter((row) => row.slug !== slug);
+    if (slug === this.currentSpaceSlug) {
+      this.activeSpaceId = null;
+      this.roster.clear();
+      this.sendTargetSessionId = null;
+      this.clearTranscriptState();
+    }
+    this.notify();
+  }
+
+  noteSpaceArchived(slug: string): void {
+    this.spaceArchivedSlug = slug;
+    this.spacesList = this.spacesList.filter((row) => row.slug !== slug);
+    if (slug === this.currentSpaceSlug) {
+      this.activeSpaceId = null;
+      this.roster.clear();
+      this.sendTargetSessionId = null;
+      this.clearTranscriptState();
+    }
     this.notify();
   }
 
@@ -428,6 +512,8 @@ export class DashboardStore {
         focus: "",
         progress: "idle",
         blockedReason: "",
+        presenceState: "offline",
+        lastSeenAtMs: null,
       };
     }
     if (data.namespace === "profile") {
@@ -483,6 +569,7 @@ export class DashboardStore {
   ): void {
     this.selfSessionId = selfSessionId;
     this.currentSpaceSlug = summary.slug;
+    this.currentSpaceLabel = summary.label;
     if (this.metadataUiDebounceTimer !== null) {
       clearTimeout(this.metadataUiDebounceTimer);
       this.metadataUiDebounceTimer = null;
@@ -494,7 +581,7 @@ export class DashboardStore {
       const sid = m.sessionId;
       this.roster.set(sid, {
         sessionId: sid,
-        displayName: m.displayName,
+        displayName: displayNameForRosterMember(m, selfSessionId),
         isHuman: m.isHuman,
         runtime: m.runtime,
         workspaceLabel: m.workspaceLabel,
@@ -504,7 +591,15 @@ export class DashboardStore {
         focus: m.focus,
         progress: m.progress,
         blockedReason: m.blockedReason ?? "",
+        presenceState: m.presenceState ?? "offline",
+        lastSeenAtMs: m.lastSeenAtMs ?? null,
       });
+    }
+    if (
+      this.sendTargetSessionId !== null &&
+      !this.roster.has(this.sendTargetSessionId)
+    ) {
+      this.sendTargetSessionId = null;
     }
     this.notify();
   }

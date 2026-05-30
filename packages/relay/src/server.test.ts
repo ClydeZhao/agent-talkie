@@ -308,6 +308,133 @@ describe("createRelayServer", () => {
   });
 
   describe("HTTP: health, /dashboard static, and 404", () => {
+    it("GET relay/status returns active WebSocket connection count", async () => {
+      const srv = await createRelayServer({ dbPath: testDbPath(), port: 0 });
+      const origin = httpOrigin(srv.url);
+
+      let res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/relay/status`,
+      );
+      expect(res.status).toBe(200);
+      let body = (await res.json()) as {
+        running?: boolean;
+        activeConnectionCount?: number;
+        stopSupported?: boolean;
+        restartSupported?: boolean;
+      };
+      expect(body).toMatchObject({
+        running: true,
+        activeConnectionCount: 0,
+        stopSupported: true,
+        restartSupported: false,
+      });
+
+      res = await fetchWithTimeout(`${origin}/__agent-talkie/v1/relay/restart`, {
+        method: "POST",
+      });
+      expect(res.status).toBe(409);
+
+      const ws = await openWs(srv.url);
+      res = await fetchWithTimeout(`${origin}/__agent-talkie/v1/relay/status`);
+      body = (await res.json()) as { activeConnectionCount?: number };
+      expect(body.activeConnectionCount).toBe(1);
+
+      ws.close();
+      await srv.close();
+    });
+
+    it("GET space-summary marks members online, offline, and stale", async () => {
+      const dbPath = testDbPath();
+      const prep = openDatabase(dbPath);
+      migrate(prep);
+      const now = Date.now();
+      const { id: staleSessionId } = createSession(prep, {
+        displayName: "Stale",
+        runtime: "cli",
+        workspaceLabel: "repo",
+      });
+      const { id: offlineSessionId } = createSession(prep, {
+        displayName: "Offline",
+        runtime: "cli",
+        workspaceLabel: "repo",
+      });
+      const { id: spaceId } = insertSpaceWithSlug(prep, {
+        slug: "presence-summary",
+        nowMs: now,
+      });
+      insertMembership(prep, {
+        spaceId,
+        sessionId: staleSessionId,
+        nowMs: now - 120_000,
+      });
+      insertMembership(prep, {
+        spaceId,
+        sessionId: offlineSessionId,
+        nowMs: now,
+      });
+      prep
+        .prepare(
+          `INSERT INTO collaboration_status
+             (space_id, session_id, progress, blocked_reason, last_activity_ms, updated_at)
+           VALUES (?, ?, 'idle', NULL, ?, ?)`,
+        )
+        .run(spaceId, staleSessionId, now - 120_000, now - 120_000);
+      prep.close();
+
+      const srv = await createRelayServer({
+        dbPath,
+        port: 0,
+        presenceStaleAfterMs: 60_000,
+      });
+      const ws = await openWs(srv.url);
+      await handshake(ws);
+      ws.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Online",
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+          },
+        }),
+      );
+      const reg = (await nextJson(ws)) as { sessionId?: string };
+      const onlineSessionId = reg.sessionId!;
+      ws.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: onlineSessionId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: "presence-summary" },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      await nextJson(ws);
+
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/oversight/space-summary?slug=presence-summary`,
+      );
+      expect(res.status).toBe(200);
+      const summary = (await res.json()) as {
+        members?: Array<{
+          sessionId: string;
+          presenceState?: string;
+          lastSeenAtMs?: number;
+        }>;
+      };
+      const byId = new Map(summary.members?.map((m) => [m.sessionId, m]));
+      expect(byId.get(onlineSessionId)?.presenceState).toBe("online");
+      expect(byId.get(offlineSessionId)?.presenceState).toBe("offline");
+      expect(byId.get(staleSessionId)?.presenceState).toBe("stale");
+      expect(byId.get(staleSessionId)?.lastSeenAtMs).toBe(now - 120_000);
+
+      ws.close();
+      await srv.close();
+    });
+
     it("returns 200 JSON for GET /__agent-talkie/v1/health with matching generation", async () => {
       const token = "a".repeat(32);
       const srv = await createRelayServer({
@@ -607,7 +734,7 @@ describe("createRelayServer", () => {
 
       wsHuman.close();
       wsAgent.close();
-      await new Promise((r) => setTimeout(r, 30));
+      await new Promise((r) => setTimeout(r, 50));
 
       const origin = httpOrigin(srv.url);
       const res = await fetchWithTimeout(
@@ -906,6 +1033,149 @@ describe("createRelayServer", () => {
       expect(summaryRes.status).toBe(404);
 
       wsRecon.close();
+      await srv.close();
+    });
+
+    it("keeps archived slugs durable so reconnect cannot revive the space", async () => {
+      const srv = await createRelayServer({ dbPath: testDbPath(), port: 0 });
+      const base = httpOrigin(srv.url);
+
+      const wsOwner = await openWs(srv.url);
+      await handshake(wsOwner);
+      wsOwner.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Owner",
+            runtime: "vitest",
+            workspaceLabel: "w",
+            isHuman: true,
+          },
+        }),
+      );
+      const ownerReg = (await nextJson(wsOwner)) as { sessionId: string };
+      const ownerId = ownerReg.sessionId;
+
+      wsOwner.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: ownerId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: "archive-room" },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const ownerJoined = (await nextJson(wsOwner)) as { spaceId: string };
+      const spaceId = ownerJoined.spaceId;
+
+      wsOwner.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: ownerId,
+          kind: "control",
+          type: "space.archive",
+          payload: { slug: "archive-room" },
+          idempotencyKey: randomUUID(),
+          spaceId,
+        }),
+      );
+      expect(await nextJson(wsOwner)).toEqual({
+        type: "space.archived",
+        slug: "archive-room",
+      });
+      await new Promise((r) => setTimeout(r, 100));
+
+      const wsRecon = await openWs(srv.url);
+      await handshake(wsRecon);
+      wsRecon.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Reconnector",
+            runtime: "vitest",
+            workspaceLabel: "w",
+          },
+        }),
+      );
+      const reconReg = (await nextJson(wsRecon)) as { sessionId: string };
+
+      wsRecon.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: reconReg.sessionId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: "archive-room" },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const joinReply = (await nextJson(wsRecon)) as { type: string; error?: string };
+      expect(joinReply.type).toBe("protocol.error");
+      expect(joinReply.error).toBe("space_archived");
+
+      const listAfter = await fetchWithTimeout(
+        `${base}/__agent-talkie/v1/oversight/spaces`,
+      );
+      const spacesAfter = (await listAfter.json()) as Array<{ slug: string }>;
+      expect(spacesAfter.some((s) => s.slug === "archive-room")).toBe(false);
+
+      wsRecon.close();
+      await srv.close();
+    });
+
+    it("marks stale disconnected members left and idles the space", async () => {
+      const srv = await createRelayServer({
+        dbPath: testDbPath(),
+        port: 0,
+        presenceStaleAfterMs: 10,
+      });
+      const base = httpOrigin(srv.url);
+
+      const ws = await openWs(srv.url);
+      await handshake(ws);
+      ws.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Owner",
+            runtime: "vitest",
+            workspaceLabel: "w",
+            isHuman: true,
+          },
+        }),
+      );
+      const reg = (await nextJson(ws)) as { sessionId: string };
+      ws.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: reg.sessionId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug: "idle-on-close" },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      await nextJson(ws);
+
+      ws.close();
+      await new Promise((r) => setTimeout(r, 30));
+
+      const listAfter = await fetchWithTimeout(
+        `${base}/__agent-talkie/v1/oversight/spaces`,
+      );
+      const spacesAfter = (await listAfter.json()) as Array<{
+        slug: string;
+        status: string;
+        memberCount: number;
+      }>;
+      const row = spacesAfter.find((s) => s.slug === "idle-on-close");
+      expect(row).toMatchObject({ status: "idle", memberCount: 0 });
+
       await srv.close();
     });
   });

@@ -1,7 +1,7 @@
 # agent-talkie PRD
 
 Status: Current  
-Last updated: 2026-04-28
+Last updated: 2026-05-30
 
 A collaboration layer for coding agents that already run in different products.
 
@@ -67,9 +67,16 @@ If the system only supports one-shot dispatch, it becomes a weak task queue and 
 
 The unit of collaboration is a session, not a runtime brand.
 
-Users do not collaborate with abstract entities like "Claude" or "Codex". They collaborate with concrete running sessions that have a current workspace, a current task, and a distinct identity.
+Users do not collaborate with abstract entities like "Claude" or "Codex". They collaborate with concrete running sessions that have a current native context, a current task, and a distinct identity.
 
 This matters because users may run several sessions from the same runtime at once.
+
+Runtime brand does not determine collaboration role. A Codex, Cursor, Claude
+Code, or other native session may act as orchestrator or worker. Residency is
+also independent of role: an orchestrator can be pull-based or long-running, and
+a worker can be pull-based or long-running. The collaboration layer should
+represent the actual session behavior instead of inferring capability from the
+tool name.
 
 ### Conversation first
 
@@ -110,6 +117,11 @@ Human involvement should happen only when:
 The orchestrator is not required to relay every message, but it should own the outcome for the collaboration space and proactively drive the team toward it.
 
 Its job is not just to dispatch work. It should keep momentum, follow up on stalled threads, synthesize the current state, and decide when the human needs to step in.
+
+Orchestrator is a role assigned inside a space, not a special runtime category.
+Any participating session with enough tool-loop capability can be designated as
+the orchestrator, and the role can move when the collaboration needs a different
+lead.
 
 It is the main control point for:
 
@@ -175,7 +187,7 @@ Each running session joins a shared collaboration space. When it joins, it becom
 
 - a stable identity
 - a human-usable name
-- visible runtime and workspace context
+- visible runtime and project-label context
 - lightweight collaboration metadata
 
 Users should address sessions by name, not by runtime brand.
@@ -210,7 +222,7 @@ Each session should expose enough information to be a useful collaborator:
 
 - who it is
 - what runtime it belongs to
-- what workspace it is currently operating in
+- what workspace label or project label it exposes
 - what role it is playing
 - what it is currently focused on
 - how its work is progressing
@@ -295,7 +307,7 @@ During integration, the sessions can keep talking across team boundaries: confir
 ## Default decisions
 
 - Session names should be human-usable labels with stable disambiguation when needed. A name may be chosen by the user or proposed by the session, but the system should add a clear disambiguator when collisions exist, such as runtime, owner, or numeric suffix.
-- Workspace visibility should be minimal by default. High-level workspace context such as runtime, repo or workspace label, branch, and current focus may be visible, but local paths and other sensitive details should remain private unless explicitly shared.
+- Workspace-label visibility should be minimal by default. High-level project context such as runtime, repo or workspace label, branch, and current focus may be visible, but local paths and other sensitive details should remain private unless explicitly shared.
 - Metadata upkeep should be hybrid by default. Status-like fields such as activity, blocked state, and last update can be refreshed automatically, while semantic fields such as role, display name, ownership, and declared focus should remain under human control.
 - Human-visible history should default to the shared collaboration timeline and explicitly shared threads. Internal native context, private local state, and anything not sent into the collaboration layer should not be exposed by default.
 

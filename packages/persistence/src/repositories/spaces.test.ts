@@ -11,7 +11,9 @@ import {
   getSpaceBySlug,
   insertMembership,
   insertSpaceWithSlug,
+  markSpaceDestroyed,
   normalizeSpaceSlug,
+  setSpaceIdle,
 } from "./spaces.js";
 
 describe("spaces repository", () => {
@@ -21,6 +23,37 @@ describe("spaces repository", () => {
 
   it("normalizeSpaceSlug rejects invalid pattern", () => {
     expect(() => normalizeSpaceSlug("bad--slug")).toThrow(/Invalid space slug:/);
+  });
+
+  it("stores v3 lifecycle state and a human-usable label", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const now = 1_700_000_000_000;
+
+    const { id: spaceId } = insertSpaceWithSlug(db, {
+      slug: "planning-room",
+      nowMs: now,
+      label: "Planning Room",
+    });
+
+    expect(getSpaceBySlug(db, "planning-room")).toMatchObject({
+      id: spaceId,
+      slug: "planning-room",
+      label: "Planning Room",
+      status: "active",
+      archivedAt: null,
+      destroyedAt: null,
+    });
+
+    setSpaceIdle(db, spaceId);
+    expect(getSpaceBySlug(db, "planning-room")?.status).toBe("idle");
+
+    markSpaceDestroyed(db, spaceId, now + 1);
+    expect(getSpaceBySlug(db, "planning-room")).toMatchObject({
+      id: spaceId,
+      status: "destroyed",
+      destroyedAt: now + 1,
+    });
   });
 });
 

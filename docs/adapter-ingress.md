@@ -37,11 +37,13 @@ Content-Length: 42
 
 Each frame body must be a JSON value that passes `safeParseEnvelope()` before it is forwarded with `sendEnvelope()`.
 
+Adapters should not infer broadcast semantics from `to` being absent in persisted transcript rows. Human dashboard messages without `to` are routed to the active orchestrator; the relay records `effectiveTo` when that default route is resolved so pull-based adapters can catch up the same delivery target later.
+
 - **Binary:** `talkie-stdio-adapter` (see package `bin`).
 - **Queue:** Environment variable `TALKIE_STDIO_MAX_QUEUE` sets the bounded outbound queue length; it must be a positive integer. If unset or invalid, the default is **100**. When the queue is full, the adapter drops the **oldest** pending envelope, writes a structured warning line to **stderr**, and increments an internal counter. Queue overflow does not surface as an error on the relay protocol stream.
 - **Local relay:** Call `ensureRelayRunning()` from `@agent-talkie/supervisor` before `connect()` so a localhost daemon is available (same pattern as the CLI).
 
-Optional session identity overrides: `TALKIE_STDIO_DISPLAY_NAME`, `TALKIE_STDIO_RUNTIME`, `TALKIE_STDIO_WORKSPACE` (see adapter source defaults).
+Optional session identity overrides: `TALKIE_STDIO_DISPLAY_NAME`, `TALKIE_STDIO_RUNTIME`, `TALKIE_STDIO_WORKSPACE_LABEL` (see adapter source defaults).
 
 ## Security notes
 

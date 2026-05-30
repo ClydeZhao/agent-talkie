@@ -3,6 +3,13 @@ import { customElement, property } from "lit/decorators.js";
 
 import type { RosterRow } from "../store/dashboard-store.js";
 
+function formatLastSeen(ms: number | null): string {
+  if (ms === null) {
+    return "Last seen unknown";
+  }
+  return `Last seen ${new Date(ms).toISOString().slice(11, 19)}Z`;
+}
+
 @customElement("talkie-roster-entry")
 export class TalkieRosterEntry extends LitElement {
   static styles = css`
@@ -126,6 +133,10 @@ export class TalkieRosterEntry extends LitElement {
       font-size: 11px;
       color: var(--talkie-muted, #8b949e);
       text-transform: none;
+    }
+    .presence-label {
+      font-size: 11px;
+      color: var(--talkie-muted, #8b949e);
     }
     .blocked-reason {
       font-size: 11px;
@@ -323,14 +334,18 @@ export class TalkieRosterEntry extends LitElement {
                       Clear orchestrator
                     </button>`}
                 ${this.selfSessionId.length > 0 &&
-                r.sessionId !== this.selfSessionId &&
-                !r.owner
-                  ? html`<button
-                      type="button"
-                      class="menu-item"
-                      @click=${this._onRemove}
-                    >Remove</button>`
-                  : nothing}
+	                r.sessionId !== this.selfSessionId &&
+	                !r.owner
+	                  ? html`<button
+	                      type="button"
+	                      class="menu-item"
+	                      @click=${this._onRemove}
+	                    >
+	                      ${r.presenceState === "stale"
+                          ? "Clear stale participant"
+                          : "Remove"}
+	                    </button>`
+	                  : nothing}
               </div>
             </details>
           `
@@ -358,7 +373,7 @@ export class TalkieRosterEntry extends LitElement {
             <div class="name">${r.displayName}</div>
             <div class="chips-row">
               ${r.sessionId === this.selfSessionId
-                ? html`<span class="chip chip--self">You</span>`
+                ? html`<span class="chip chip--self">Dashboard</span>`
                 : nothing}
               ${r.owner
                 ? html`<span class="chip chip--owner">Owner</span>`
@@ -378,7 +393,11 @@ export class TalkieRosterEntry extends LitElement {
                 <span class="progress-dot progress-dot--${prog}"></span>
                 <span class="progress-label">${prog}</span>
               </span>
-            </div>
+	              <span class="presence-label">${r.presenceState}</span>
+	              <span class="presence-label last-seen"
+	                >${formatLastSeen(r.lastSeenAtMs)}</span
+	              >
+	            </div>
             ${blocked && r.blockedReason.length > 0
               ? html`<div class="blocked-reason">${r.blockedReason}</div>`
               : nothing}

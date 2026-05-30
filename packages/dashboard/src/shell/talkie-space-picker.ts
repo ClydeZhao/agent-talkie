@@ -108,7 +108,9 @@ export class TalkieSpacePicker extends LitElement {
       font: inherit;
     }
     .create-row button,
-    .destroy-btn {
+    .archive-btn,
+    .destroy-btn,
+    .copy-btn {
       padding: 6px 10px;
       border-radius: 4px;
       border: 1px solid var(--talkie-border, #30363d);
@@ -118,10 +120,33 @@ export class TalkieSpacePicker extends LitElement {
       cursor: pointer;
       white-space: nowrap;
     }
+    .archive-btn {
+      color: var(--talkie-accent-warning, #d29922);
+    }
     .destroy-btn {
       margin-top: 8px;
       border-color: var(--talkie-accent-danger, #f85149);
       color: var(--talkie-accent-danger, #f85149);
+    }
+    .copy-btn {
+      width: calc(100% - 24px);
+      margin: 8px 12px;
+      text-align: left;
+    }
+    .copy-note {
+      font-size: 12px;
+      color: var(--talkie-muted, #8b949e);
+      padding: 0 12px 8px;
+    }
+    .space-label {
+      display: block;
+      font-weight: 600;
+    }
+    .space-meta {
+      display: block;
+      color: var(--talkie-muted, #8b949e);
+      font-size: 12px;
+      margin-top: 2px;
     }
     .err {
       font-size: 12px;
@@ -148,11 +173,17 @@ export class TalkieSpacePicker extends LitElement {
   @property({ type: String })
   currentSlug = "";
 
+  @property({ type: String })
+  currentSpaceLabel = "";
+
   @property({ type: Boolean })
   selfIsOwner = false;
 
   @property({ type: String, attribute: false })
   destroyedSlug: string | null = null;
+
+  @property({ type: String, attribute: false })
+  archivedSlug: string | null = null;
 
   @state()
   private open = false;
@@ -168,6 +199,9 @@ export class TalkieSpacePicker extends LitElement {
 
   @state()
   private createError: string | null = null;
+
+  @state()
+  private copyState: "idle" | "copied" | "failed" = "idle";
 
   private onDocClick = (ev: MouseEvent): void => {
     if (!this.open) {
@@ -219,6 +253,8 @@ export class TalkieSpacePicker extends LitElement {
         const o = raw as Record<string, unknown>;
         return {
           slug: String(o.slug ?? ""),
+          label: String(o.label ?? o.slug ?? ""),
+          status: o.status === "idle" ? "idle" : "active",
           memberCount: Number(o.memberCount ?? 0),
           ownerSessionId:
             o.ownerSessionId === null || o.ownerSessionId === undefined
@@ -301,8 +337,69 @@ export class TalkieSpacePicker extends LitElement {
     this.open = false;
   }
 
+  private onArchive(ev: Event): void {
+    ev.stopPropagation();
+    const slug = this.currentSlug;
+    if (
+      !this.selfIsOwner ||
+      !this.bridge ||
+      !this.store?.activeSpaceId ||
+      !slug
+    ) {
+      return;
+    }
+    if (!window.confirm(`Archive space "${slug}"?`)) {
+      return;
+    }
+    this.bridge.sendSpaceArchive({
+      spaceId: this.store.activeSpaceId,
+      slug,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    this.open = false;
+  }
+
+  private currentLabel(): string {
+    const row = this.store?.spacesList.find((r) => r.slug === this.currentSlug);
+    return (row?.label ?? this.currentSpaceLabel) || this.currentSlug;
+  }
+
+  private currentDisplayLabel(): string {
+    return this.currentSlug ? this.currentLabel() : "-";
+  }
+
+  private currentSpaceUnavailable(): boolean {
+    return (
+      (this.destroyedSlug !== null && this.destroyedSlug === this.currentSlug) ||
+      (this.archivedSlug !== null && this.archivedSlug === this.currentSlug)
+    );
+  }
+
+  private joinPrompt(): string {
+    return [
+      "Join this local Agent Talkie Space.",
+      `Space label: ${this.currentLabel()}`,
+      `Space slug: ${this.currentSlug}`,
+      "Use your Agent Talkie runtime tooling to join this slug, then send a short hello/ack to the orchestrator.",
+      "Do not ask the human to run low-level join/send/pull transport commands.",
+    ].join("\n");
+  }
+
+  private async copyJoinPrompt(ev: Event): Promise<void> {
+    ev.stopPropagation();
+    this.copyState = "idle";
+    try {
+      await navigator.clipboard.writeText(this.joinPrompt());
+      this.copyState = "copied";
+    } catch {
+      this.copyState = "failed";
+    }
+  }
+
   render() {
     const destroyed = this.destroyedSlug;
+    const archived = this.archivedSlug;
+    const unavailable = this.currentSpaceUnavailable();
     return html`
       <div>
         <button
@@ -312,12 +409,15 @@ export class TalkieSpacePicker extends LitElement {
           aria-expanded=${this.open}
         >
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-            >${this.currentSlug || "—"}</span
+            >${this.currentDisplayLabel()}</span
           >
           <span class="chev">${this.open ? "▲" : "▼"}</span>
         </button>
         ${destroyed
           ? html`<div class="banner">Space was destroyed: ${destroyed}</div>`
+          : null}
+        ${archived
+          ? html`<div class="banner">Space was archived: ${archived}</div>`
           : null}
         ${this.open
           ? html`
@@ -325,6 +425,20 @@ export class TalkieSpacePicker extends LitElement {
                 ${this.fetchError
                   ? html`<div class="err">${this.fetchError}</div>`
                   : null}
+                ${unavailable
+                  ? null
+                  : html`<button
+                      type="button"
+                      class="copy-btn"
+                      @click=${this.copyJoinPrompt}
+                    >
+                      Copy join prompt
+                    </button>`}
+                ${this.copyState === "copied"
+                  ? html`<div class="copy-note">Copied</div>`
+                  : this.copyState === "failed"
+                    ? html`<div class="err">Copy failed</div>`
+                    : null}
                 ${(this.store?.spacesList ?? []).map(
                   (r) => html`
                     <button
@@ -334,15 +448,23 @@ export class TalkieSpacePicker extends LitElement {
                         : ""}"
                       @click=${(e: Event) => this.pickSpace(r.slug, e)}
                     >
-                      ${r.slug}
-                      <span style="color:var(--talkie-muted,#8b949e)"
-                        >(${r.memberCount})</span
-                      >
+                      <span class="space-label">${r.label || r.slug}</span>
+                      <span class="space-meta">
+                        ${r.slug} · ${r.status} · ${r.memberCount}
+                        ${r.memberCount === 1 ? "member" : "members"}
+                      </span>
                     </button>
                   `,
                 )}
-                ${this.selfIsOwner
+                ${this.selfIsOwner && !unavailable
                   ? html`
+                      <button
+                        type="button"
+                        class="row archive-btn"
+                        @click=${this.onArchive}
+                      >
+                        Archive
+                      </button>
                       <button
                         type="button"
                         class="row destroy-btn"

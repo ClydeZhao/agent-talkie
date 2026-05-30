@@ -101,6 +101,11 @@ export const RELAY_ERROR_COPY: Record<string, RelayErrorCopy> = {
     hint: "无需重复加入；若状态异常可刷新页面后重试。",
     sticky: false,
   },
+  space_archived: {
+    title: "空间已归档",
+    hint: "该空间不能重新加入；请从活动空间列表选择其他空间或创建新空间。",
+    sticky: false,
+  },
   cannot_remove_space_owner: {
     title: "无法移除空间所有者",
     hint: "空间所有者不能被移出；请先转移所有权或销毁空间（若产品支持）。",

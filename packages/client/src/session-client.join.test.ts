@@ -102,6 +102,11 @@ vi.mock("ws", () => {
       expect(json).toContain('"type":"space.join"');
       expect(o.kind).toBe("control");
       expect(o.type).toBe("space.join");
+      expect(o.payload).toMatchObject({
+        slug: "my-space",
+        label: "My Visible Space",
+        creatorOrchestrator: true,
+      });
       queueMicrotask(() => {
         this.emit(
           "message",
@@ -136,6 +141,8 @@ describe("TalkieSessionClient joinSpace", () => {
     });
     const out = await client.joinSpace({
       slug: "my-space",
+      label: "My Visible Space",
+      creatorOrchestrator: true,
       idempotencyKey: uuidv7(),
     });
     expect(out.slug).toBe("my-space");

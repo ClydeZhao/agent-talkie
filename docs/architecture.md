@@ -25,7 +25,7 @@ The monorepo is organized around one relay-centered runtime:
 | `@agent-talkie/dashboard` | Lit/Vite dashboard, browser session bridge, reactive store, roster, transcript/search UI |
 | `@agent-talkie/adapter-stdio` | Reference stdio ingress using Content-Length framing |
 | `@agent-talkie/adapter-codex` | Codex runtime bridge built on stdio ingress and shared client behavior |
-| `@agent-talkie/adapter-cursor-mcp` | Cursor MCP server exposing Talkie tools and resources |
+| `@agent-talkie/adapter-cursor-mcp` | MCP server exposing Talkie tools and resources; currently wrapped for Cursor App and Claude Code |
 
 ## Default Architecture
 
@@ -56,6 +56,8 @@ Adapter ingress may use stdio, MCP, or runtime-specific tool calls, but those ar
 
 The browser does not talk directly to SQLite. The relay owns database access and exposes only product-shaped HTTP/WebSocket surfaces.
 
+When a human sends an untargeted conversation message, relay routing treats it as Human -> current orchestrator. The live WebSocket echo may keep the original envelope so the dashboard can present the default discussion without exposing transport fields, but the persisted transcript must include the effective target (`effectiveTo`) so offline runtime catch-up replays the message only to the session that was orchestrator at send time.
+
 ## Hard Invariants
 
 - Participation is explicit. Discovery or local network presence must not grant membership.
@@ -63,6 +65,12 @@ The browser does not talk directly to SQLite. The relay owns database access and
 - The first session in a space must not become a permanent special host.
 - Session identity is first-class and distinct from runtime brand.
 - Orchestrator is a collaboration role, not a mandatory relay bottleneck for every message.
+- Orchestrator and worker roles are not tied to runtime brands. Codex CLI,
+  Cursor App, Claude Code, and future runtimes must be represented by their
+  actual session behavior, not by assumed role suitability.
+- A session's residency model is independent of role. Long-running and
+  pull-based sessions can both be orchestrators or workers if their adapter/tool
+  loop can receive Talkie messages, act on them, and report back.
 - Collaboration metadata belongs to the collaboration layer, not worker repo files.
 - Local context stays local unless deliberately shared into the collaboration layer.
 - Raw envelope JSON is diagnostic data, not the default human-facing product surface.
@@ -72,9 +80,15 @@ The browser does not talk directly to SQLite. The relay owns database access and
 - Dashboard state must be projected from relay and persistence state, not invented as a second source of truth.
 - User-visible names should be stable, human-usable labels with disambiguation when needed.
 
+## Current Delivery Target
+
+Codex CLI and Claude Code explicitly joining the same Talkie Space is now the proven runtime baseline. The current delivery target is the local orchestrator dashboard built on top of that baseline: a human-facing dashboard that makes the current space, orchestrator, runtime availability, default discussion, private intervention, and failure states understandable without exposing relay internals as the primary surface.
+
+Cursor App remains a supported architecture direction through the MCP adapter, but it is not part of the current delivery gate. The gate should stay narrow until the dashboard proves that the verified Codex CLI + Claude Code loop is operable by a user, not merely observable by a developer.
+
 ## Current Simplifications
 
-The v3 local product assumes a runtime-facing session participates in one active collaboration space at a time. Multi-space UX and routing semantics are deferred. Low-level adapters may keep separate space-scoped attachments for debugging or compatibility, but the primary product should not make users manage multiple active spaces for one runtime session.
+The local product assumes a runtime-facing session participates in one active collaboration space at a time. Multi-space UX and routing semantics are deferred. Low-level adapters may keep separate space-scoped attachments for debugging or compatibility, but the primary product should not make users manage multiple active spaces for one runtime session.
 
 ## Security And Trust Constraints
 
@@ -82,7 +96,7 @@ The current product target is localhost. Future cross-machine or team collaborat
 
 Do not treat LAN discovery, process discovery, or a reachable relay as permission to join a space.
 
-Workspace visibility should be minimal by default. Runtime, workspace label, branch, and current focus may be visible. Full local paths and sensitive local context should not be exposed unless explicitly shared.
+Workspace-label visibility should be minimal by default. Runtime, repo or workspace label, branch, and current focus may be visible. Full local paths and sensitive local context should not be exposed unless explicitly shared.
 
 Transcript and agent-produced text are untrusted UI input. Dashboard rendering should treat them as text or sanitized content, not executable markup.
 
@@ -96,7 +110,7 @@ The default dashboard direction for the local product is orchestrator-first:
 
 - Human ↔ Orchestrator discussion is the primary view.
 - Participant private chats are secondary intervention paths.
-- Participant roster shows role, runtime, workspace, status, and last activity.
+- Participant roster shows role, runtime, workspace label, status, and last activity.
 - Raw envelope diagnostics stay available behind explicit debug affordances.
 
 ## Relay And Lifecycle Architecture
@@ -128,4 +142,4 @@ Use package tests for unit and integration behavior:
 
 Use `npm test` for a full package test baseline and `npm run build` for a full build baseline. Use `npm run smoke:local` for local cross-runtime product smoke when CLI, adapter, relay lifecycle, or dashboard launch behavior changes.
 
-Use Playwright for browser-visible dashboard behavior. Use Computer Use only when verifying real desktop runtime integration such as Codex App, Codex CLI, Cursor App, Cursor MCP availability, native prompts, or a true copy-paste join flow across apps.
+Use Playwright for browser-visible dashboard behavior. Use Computer Use only when verifying real desktop/runtime integration such as Codex CLI terminal behavior, Claude Code MCP/tool availability, Cursor App MCP availability when Cursor is in scope, native prompts, or a true copy-paste join flow across tools.

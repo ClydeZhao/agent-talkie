@@ -36,7 +36,7 @@ export async function runWatch(opts: {
   await client.registerSession({
     displayName: process.env.TALKIE_WATCH_DISPLAY_NAME ?? "human-watch",
     runtime: process.env.TALKIE_WATCH_RUNTIME ?? "cli-watch",
-    workspaceLabel: process.env.TALKIE_WATCH_WORKSPACE ?? ".",
+    workspaceLabel: process.env.TALKIE_WATCH_WORKSPACE_LABEL ?? ".",
     isHuman: true,
   });
   await client.joinSpace({

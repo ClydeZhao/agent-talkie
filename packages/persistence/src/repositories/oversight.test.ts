@@ -12,8 +12,10 @@ import {
 import {
   insertMembership,
   insertSpaceWithSlug,
+  markSpaceDestroyed,
   markMembershipLeft,
   setSpaceArchived,
+  setSpaceIdle,
 } from "./spaces.js";
 import { appendTranscriptEntry } from "./transcript.js";
 
@@ -61,11 +63,39 @@ describe("oversight repository", () => {
     for (const m of [alice!, bob!]) {
       expect(m).toHaveProperty("runtime");
       expect(m).toHaveProperty("workspaceLabel");
+      expect(m).toHaveProperty("lastSeenAtMs");
     }
     expect(alice!.runtime).toBe("r1");
     expect(alice!.workspaceLabel).toBe("w");
     expect(bob!.runtime).toBe("r2");
     expect(bob!.workspaceLabel).toBe("w");
+  });
+
+  it("getOversightSpaceSummaryBySlug uses collaboration last activity as lastSeenAtMs", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const now = 1_700_000_000_000;
+    const lastActivityMs = now + 60_000;
+
+    const { id: sessionId } = createSession(db, {
+      displayName: "Worker",
+      runtime: "cli",
+      workspaceLabel: "repo",
+    });
+    const { id: spaceId } = insertSpaceWithSlug(db, {
+      slug: "presence-room",
+      nowMs: now,
+    });
+    insertMembership(db, { spaceId, sessionId, nowMs: now });
+    upsertCollaborationStatus(db, {
+      spaceId,
+      sessionId,
+      patch: { progress: "working", lastActivityMs },
+      nowMs: now,
+    });
+
+    const summary = getOversightSpaceSummaryBySlug(db, "presence-room");
+    expect(summary?.members[0]?.lastSeenAtMs).toBe(lastActivityMs);
   });
 
   it("listOversightTranscriptTailBySlug returns at most limit entries oldest-first with createdAtMs", () => {
@@ -148,7 +178,7 @@ describe("oversight repository", () => {
     expect(blocked[0]!.blockedReason).toBe("waiting on API");
   });
 
-  it("listOversightSpaces returns active spaces sorted by slug with correct member counts", () => {
+  it("listOversightSpaces returns active/idle spaces sorted by slug with labels and member counts", () => {
     const db = openDatabase(":memory:");
     migrate(db);
     const now = 1_700_000_000_000;
@@ -178,13 +208,19 @@ describe("oversight repository", () => {
     const { id: idBeta } = insertSpaceWithSlug(db, {
       slug: "beta",
       nowMs: now,
+      label: "Beta Room",
     });
     const { id: idAlpha } = insertSpaceWithSlug(db, {
       slug: "alpha",
       nowMs: now,
+      label: "Alpha Room",
     });
     const { id: idArchived } = insertSpaceWithSlug(db, {
       slug: "z-archived",
+      nowMs: now,
+    });
+    const { id: idDestroyed } = insertSpaceWithSlug(db, {
+      slug: "z-destroyed",
       nowMs: now,
     });
 
@@ -194,14 +230,21 @@ describe("oversight repository", () => {
     insertMembership(db, { spaceId: idBeta, sessionId: sGamma, nowMs: now });
     markMembershipLeft(db, idBeta, sGamma, now + 1);
 
+    setSpaceIdle(db, idBeta);
     setSpaceArchived(db, idArchived, now + 2);
+    markSpaceDestroyed(db, idDestroyed, now + 3);
 
     const list = listOversightSpaces(db);
     expect(list).toHaveLength(2);
     expect(list[0]!.slug).toBe("alpha");
+    expect(list[0]!.label).toBe("Alpha Room");
+    expect(list[0]!.status).toBe("active");
     expect(list[0]!.memberCount).toBe(2);
     expect(list[1]!.slug).toBe("beta");
+    expect(list[1]!.label).toBe("Beta Room");
+    expect(list[1]!.status).toBe("idle");
     expect(list[1]!.memberCount).toBe(1);
     expect(list.some((r) => r.slug === "z-archived")).toBe(false);
+    expect(list.some((r) => r.slug === "z-destroyed")).toBe(false);
   });
 });

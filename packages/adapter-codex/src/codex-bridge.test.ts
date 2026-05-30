@@ -18,6 +18,12 @@ const THREAD_ID = uuidv4();
 const THREAD_ID_2 = uuidv4();
 const CODEX_SESSION_STATE_FILE = "adapter-codex-session-state.json";
 const CODEX_THREAD_STATE_FILE = "adapter-codex-thread-state.json";
+const DEFAULT_CODEX_SESSION_IDENTITY = {
+  displayName: "codex-adapter",
+  runtime: "adapter-codex",
+  workspaceLabel: ".",
+  isHuman: false,
+};
 
 type MockChild = ChildProcess & {
   stdin: PassThrough;
@@ -61,6 +67,24 @@ function finishChild(child: MockChild, exitCode: number): void {
   child.stdout.end();
   child.stderr.end();
   child.emit("exit", exitCode, null);
+}
+
+function writePersistedSessionState(
+  dataDir: string,
+  overrides?: {
+    identity?: unknown;
+    reconnectSecret?: string;
+  },
+): void {
+  writeFileSync(
+    join(dataDir, CODEX_SESSION_STATE_FILE),
+    JSON.stringify({
+      sessionId: REG_SID,
+      reconnectSecret: overrides?.reconnectSecret ?? "stored-secret",
+      identity: overrides?.identity ?? DEFAULT_CODEX_SESSION_IDENTITY,
+    }),
+    "utf8",
+  );
 }
 
 class MockTalkieSessionClient {
@@ -108,6 +132,9 @@ describe("runCodexAdapter", () => {
     delete process.env.TALKIE_CODEX_JOIN_SLUG;
     delete process.env.TALKIE_CODEX_SPACE_ID;
     delete process.env.TALKIE_CODEX_ARGS_JSON;
+    delete process.env.TALKIE_CODEX_DISPLAY_NAME;
+    delete process.env.TALKIE_CODEX_RUNTIME;
+    delete process.env.TALKIE_CODEX_WORKSPACE_LABEL;
     delete process.env.AGENT_TALKIE_DATA_DIR;
     rmSync(dataDir, { recursive: true, force: true });
   });
@@ -191,6 +218,75 @@ describe("runCodexAdapter", () => {
     await run;
   });
 
+  it("runs codex exec for direct messages addressed to the adapter", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
+    });
+
+    const run = runCodexAdapter({
+      spawn: mockSpawn as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.direct",
+      spaceId: SPACE_SID,
+      to: REG_SID,
+      payload: { text: "private instruction for codex" },
+    });
+
+    await waitFor(() => children.length === 1);
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "codex",
+      ["exec", "--json", "private instruction for codex"],
+      expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+    );
+
+    writeJsonLines(children[0]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "Private reply from Codex" },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[0]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length > 0);
+
+    expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: REG_SID,
+        kind: "conversation",
+        type: "chat.direct",
+        spaceId: SPACE_SID,
+        to: HUMAN_SID,
+        payload: { text: "Private reply from Codex" },
+      }),
+    );
+
+    abortController.abort();
+    await run;
+  });
+
   it("signals readiness after the session is joined and inbound messages are subscribed", async () => {
     let createdClient: MockTalkieSessionClient | null = null;
     class TrackedMock extends MockTalkieSessionClient {
@@ -238,14 +334,7 @@ describe("runCodexAdapter", () => {
       }
     }
 
-    writeFileSync(
-      join(dataDir, CODEX_SESSION_STATE_FILE),
-      JSON.stringify({
-        sessionId: REG_SID,
-        reconnectSecret: "stored-secret",
-      }),
-      "utf8",
-    );
+    writePersistedSessionState(dataDir);
     writeFileSync(
       join(dataDir, CODEX_THREAD_STATE_FILE),
       JSON.stringify({
@@ -319,10 +408,11 @@ describe("runCodexAdapter", () => {
     expect(
       JSON.parse(
         readFileSync(join(dataDir, CODEX_SESSION_STATE_FILE), "utf8"),
-      ) as { sessionId: string; reconnectSecret: string },
+      ) as { sessionId: string; reconnectSecret: string; identity: unknown },
     ).toEqual({
       sessionId: REG_SID,
       reconnectSecret: "r2",
+      identity: DEFAULT_CODEX_SESSION_IDENTITY,
     });
     expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -350,14 +440,7 @@ describe("runCodexAdapter", () => {
       }
     }
 
-    writeFileSync(
-      join(dataDir, CODEX_SESSION_STATE_FILE),
-      JSON.stringify({
-        sessionId: REG_SID,
-        reconnectSecret: "stored-secret",
-      }),
-      "utf8",
-    );
+    writePersistedSessionState(dataDir);
 
     const abortController = new AbortController();
     let readySessionId: string | undefined;
@@ -391,6 +474,62 @@ describe("runCodexAdapter", () => {
     expect(readySessionId).toBe(REG_SID);
 
     abortController.abort();
+  });
+
+  it("registers a fresh session when the persisted session identity does not match the current adapter identity", async () => {
+    process.env.TALKIE_CODEX_DISPLAY_NAME = "codex-cli-real";
+    process.env.TALKIE_CODEX_RUNTIME = "codex-cli";
+    process.env.TALKIE_CODEX_WORKSPACE_LABEL = "agent-talkie";
+
+    let createdClient: MockTalkieSessionClient | null = null;
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    writePersistedSessionState(dataDir, {
+      identity: {
+        ...DEFAULT_CODEX_SESSION_IDENTITY,
+        displayName: "old-codex",
+      },
+    });
+
+    const abortController = new AbortController();
+    const run = runCodexAdapter({
+      spawn: vi.fn(createMockChild) as unknown as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(createdClient!.resume).not.toHaveBeenCalled();
+    expect(createdClient!.registerSession).toHaveBeenCalledWith({
+      displayName: "codex-cli-real",
+      runtime: "codex-cli",
+      workspaceLabel: "agent-talkie",
+      isHuman: false,
+    });
+    expect(
+      JSON.parse(
+        readFileSync(join(dataDir, CODEX_SESSION_STATE_FILE), "utf8"),
+      ) as { identity: unknown },
+    ).toEqual(
+      expect.objectContaining({
+        identity: {
+          displayName: "codex-cli-real",
+          runtime: "codex-cli",
+          workspaceLabel: "agent-talkie",
+          isHuman: false,
+        },
+      }),
+    );
+
+    abortController.abort();
+    await run;
   });
 
   it("reports blocked stderr lines via metadata.patch while a turn is running", async () => {
@@ -461,6 +600,68 @@ describe("runCodexAdapter", () => {
         },
       },
     });
+
+    abortController.abort();
+    await run;
+  });
+
+  it("does not report internal Codex goal-store warnings as blocked user-visible status", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    const children: MockChild[] = [];
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    const abortController = new AbortController();
+    const mockSpawn = vi.fn((cmd: string, args: string[]) => {
+      const child = createMockChild();
+      children.push(child);
+      return child;
+    });
+
+    const run = runCodexAdapter({
+      spawn: mockSpawn as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    createdClient!.deliver({
+      version: 1,
+      id: uuidv4(),
+      sessionId: HUMAN_SID,
+      kind: "conversation",
+      type: "chat.message",
+      spaceId: SPACE_SID,
+      payload: { text: "answer exactly" },
+    });
+
+    await waitFor(() => children.length === 1);
+    children[0]!.stderr.write(
+      "2026-05-30T14:58:36Z  WARN codex_core::goals: failed to pause active thread goal after interrupt: error returned from database: (code: 1) no such table: thread_goals\n",
+    );
+    writeJsonLines(children[0]!.stdout, [
+      { type: "thread.started", thread_id: THREAD_ID },
+      {
+        type: "item.completed",
+        item: { type: "agent_message", text: "Exact answer" },
+      },
+      { type: "turn.completed" },
+    ]);
+    finishChild(children[0]!, 0);
+    await waitFor(() => createdClient!.sendEnvelope.mock.calls.length === 1);
+
+    expect(createdClient!.sendEnvelope).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "conversation",
+        payload: { text: "Exact answer" },
+      }),
+    );
 
     abortController.abort();
     await run;

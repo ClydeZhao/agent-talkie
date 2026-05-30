@@ -73,18 +73,22 @@ export function routeEnvelope(ctx: {
 }): void {
   const { db, envelope, senderWs, getSocketForSession } = ctx;
   const nowMs = Date.now();
+  const relayEnvelope =
+    envelope.effectiveTo === undefined
+      ? envelope
+      : ({ ...envelope, effectiveTo: undefined } satisfies Envelope);
 
-  if (envelope.type === "transcript.query") {
-    const spaceId = envelope.spaceId;
+  if (relayEnvelope.type === "transcript.query") {
+    const spaceId = relayEnvelope.spaceId;
     if (!spaceId) {
       sendJson(senderWs, { type: "protocol.error", error: "not_in_space" });
       return;
     }
-    if (!hasActiveMembership(db, spaceId, envelope.sessionId)) {
+    if (!hasActiveMembership(db, spaceId, relayEnvelope.sessionId)) {
       sendJson(senderWs, { type: "protocol.error", error: "not_in_space" });
       return;
     }
-    const p = envelope.payload;
+    const p = relayEnvelope.payload;
     const afterSeq =
       typeof p.afterSeq === "number" && Number.isInteger(p.afterSeq)
         ? p.afterSeq
@@ -115,34 +119,74 @@ export function routeEnvelope(ctx: {
     return;
   }
 
-  const spaceId = envelope.spaceId;
+  const spaceId = relayEnvelope.spaceId;
   if (!spaceId) {
     sendJson(senderWs, { type: "protocol.error", error: "not_in_space" });
     return;
   }
 
-  if (!hasActiveMembership(db, spaceId, envelope.sessionId)) {
+  if (!hasActiveMembership(db, spaceId, relayEnvelope.sessionId)) {
     sendJson(senderWs, { type: "protocol.error", error: "not_in_space" });
     return;
   }
 
-  const wire = JSON.stringify(envelope);
+  const wire = JSON.stringify(relayEnvelope);
+  const senderSession = getSessionById(db, relayEnvelope.sessionId);
+  if (!senderSession) {
+    sendJson(senderWs, { type: "protocol.error", error: "invalid_envelope" });
+    return;
+  }
+
+  let defaultOrchestratorSessionId: string | null = null;
+  if (
+    relayEnvelope.kind === "conversation" &&
+    relayEnvelope.to === undefined &&
+    senderSession.isHuman
+  ) {
+    const orch = getOrchestratorSessionId(db, spaceId);
+    if (orch === null) {
+      sendJson(senderWs, { type: "protocol.error", error: "no_orchestrator" });
+      return;
+    }
+    if (!hasActiveMembership(db, spaceId, orch)) {
+      sendJson(senderWs, {
+        type: "protocol.error",
+        error: "orchestrator_offline",
+      });
+      return;
+    }
+    defaultOrchestratorSessionId = orch;
+  }
+
+  if (relayEnvelope.to) {
+    if (!hasActiveMembership(db, spaceId, relayEnvelope.to)) {
+      sendJson(senderWs, { type: "protocol.error", error: "target_not_in_space" });
+      return;
+    }
+  }
+
   let skipGlobalAppend = false;
 
-  if (envelope.kind === "conversation" && envelope.idempotencyKey) {
+  const transcriptEnvelope =
+    defaultOrchestratorSessionId !== null
+      ? { ...relayEnvelope, effectiveTo: defaultOrchestratorSessionId }
+      : relayEnvelope;
+  const transcriptWire = JSON.stringify(transcriptEnvelope);
+
+  if (relayEnvelope.kind === "conversation" && relayEnvelope.idempotencyKey) {
     const idem = runConversationIdempotentTranscriptAppend(db, {
-      key: envelope.idempotencyKey,
-      sessionId: envelope.sessionId,
-      envelopeId: envelope.id,
+      key: relayEnvelope.idempotencyKey,
+      sessionId: relayEnvelope.sessionId,
+      envelopeId: relayEnvelope.id,
       wire,
       nowMs,
       append: () => {
-        if (!SKIP_TRANSCRIPT_TYPES.has(envelope.type)) {
+        if (!SKIP_TRANSCRIPT_TYPES.has(relayEnvelope.type)) {
           appendTranscriptEntry(db, {
             spaceId,
-            senderSessionId: envelope.sessionId,
-            envelopeJson: JSON.stringify(envelope),
-            kind: envelope.kind,
+            senderSessionId: relayEnvelope.sessionId,
+            envelopeJson: transcriptWire,
+            kind: relayEnvelope.kind,
             nowMs,
           });
           pruneTranscriptIfOverCap(db, spaceId);
@@ -163,60 +207,41 @@ export function routeEnvelope(ctx: {
     skipGlobalAppend = true;
   }
 
-  if (!skipGlobalAppend && !SKIP_TRANSCRIPT_TYPES.has(envelope.type)) {
+  if (!skipGlobalAppend && !SKIP_TRANSCRIPT_TYPES.has(relayEnvelope.type)) {
     appendTranscriptEntry(db, {
       spaceId,
-      senderSessionId: envelope.sessionId,
-      envelopeJson: JSON.stringify(envelope),
-      kind: envelope.kind,
+      senderSessionId: relayEnvelope.sessionId,
+      envelopeJson: transcriptWire,
+      kind: relayEnvelope.kind,
       nowMs,
     });
     pruneTranscriptIfOverCap(db, spaceId);
   }
 
-  const senderSession = getSessionById(db, envelope.sessionId);
-  if (!senderSession) {
-    sendJson(senderWs, { type: "protocol.error", error: "invalid_envelope" });
-    return;
-  }
-
   if (
-    envelope.kind === "conversation" &&
-    envelope.to === undefined &&
+    relayEnvelope.kind === "conversation" &&
+    relayEnvelope.to === undefined &&
     senderSession.isHuman
   ) {
-    const orch = getOrchestratorSessionId(db, spaceId);
+    const orch = defaultOrchestratorSessionId;
     if (orch === null) {
       sendJson(senderWs, { type: "protocol.error", error: "no_orchestrator" });
       return;
     }
     const orchWs = getSocketForSession(orch);
-    if (!orchWs || orchWs.readyState !== WebSocket.OPEN) {
-      sendJson(senderWs, {
-        type: "protocol.error",
-        error: "orchestrator_offline",
-      });
-      return;
+    if (orchWs?.readyState === WebSocket.OPEN) {
+      orchWs.send(wire);
     }
-    if (!hasActiveMembership(db, spaceId, orch)) {
-      sendJson(senderWs, { type: "protocol.error", error: "not_in_space" });
-      return;
-    }
-    orchWs.send(wire);
     senderWs.send(wire);
     return;
   }
 
-  if (envelope.to) {
-    if (!hasActiveMembership(db, spaceId, envelope.to)) {
-      sendJson(senderWs, { type: "protocol.error", error: "not_in_space" });
-      return;
-    }
-    const targetWs = getSocketForSession(envelope.to);
+  if (relayEnvelope.to) {
+    const targetWs = getSocketForSession(relayEnvelope.to);
     if (targetWs?.readyState === WebSocket.OPEN) {
       targetWs.send(wire);
     }
-    if (senderSession.isHuman && envelope.kind === "conversation") {
+    if (senderSession.isHuman && relayEnvelope.kind === "conversation") {
       senderWs.send(wire);
     }
     return;
@@ -230,7 +255,7 @@ export function routeEnvelope(ctx: {
     .all(spaceId) as Array<{ session_id: string }>;
 
   for (const { session_id: sid } of members) {
-    if (sid === envelope.sessionId) {
+    if (sid === relayEnvelope.sessionId) {
       continue;
     }
     const sock = getSocketForSession(sid);
@@ -239,7 +264,7 @@ export function routeEnvelope(ctx: {
     }
   }
 
-  if (senderSession.isHuman && envelope.kind === "conversation") {
+  if (senderSession.isHuman && relayEnvelope.kind === "conversation") {
     senderWs.send(wire);
   }
 }

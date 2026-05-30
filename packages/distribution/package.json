@@ -10,7 +10,39 @@
   },
   "files": [
     "bin",
+    "skills",
     "README.md"
+  ],
+  "scripts": {
+    "prepack": "node scripts/prepare-bundled-deps.mjs",
+    "postpack": "node scripts/cleanup-bundled-deps.mjs",
+    "test:tarball-install": "node test/tarball-install.mjs"
+  },
+  "dependencies": {
+    "@agent-talkie/adapter-cursor-mcp": "0.0.0",
+    "@agent-talkie/cli": "0.0.0",
+    "@lit-labs/virtualizer": "^2.1.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.8.0",
+    "commander": "14.0.3",
+    "env-paths": "4.0.0",
+    "lit": "3.3.2",
+    "minisearch": "^7.2.0",
+    "open": "^11.0.0",
+    "sirv": "^3.0.2",
+    "uuid": "^13.0.0",
+    "ws": "^8.20.0",
+    "zod": "^4.3.6"
+  },
+  "bundledDependencies": [
+    "@agent-talkie/adapter-cursor-mcp",
+    "@agent-talkie/cli",
+    "@agent-talkie/client",
+    "@agent-talkie/dashboard",
+    "@agent-talkie/persistence",
+    "@agent-talkie/protocol",
+    "@agent-talkie/relay",
+    "@agent-talkie/supervisor"
   ],
   "engines": {
     "node": ">=20"

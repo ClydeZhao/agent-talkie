@@ -37,6 +37,12 @@ function sendJson(ws: WebSocket, payload: unknown): void {
   }
 }
 
+function stripEffectiveTo(envelope: Envelope): Envelope {
+  return envelope.effectiveTo === undefined
+    ? envelope
+    : ({ ...envelope, effectiveTo: undefined } satisfies Envelope);
+}
+
 function hasActiveMembership(
   db: Database.Database,
   spaceId: string,
@@ -185,7 +191,7 @@ export function handleCollaborationControl(
       appendTranscriptEntry(db, {
         spaceId,
         senderSessionId: envelope.sessionId,
-        envelopeJson: JSON.stringify(envelope),
+        envelopeJson: JSON.stringify(stripEffectiveTo(envelope)),
         kind: "control",
         nowMs,
       });
@@ -260,7 +266,7 @@ export function handleCollaborationControl(
       appendTranscriptEntry(db, {
         spaceId,
         senderSessionId: envelope.sessionId,
-        envelopeJson: JSON.stringify(envelope),
+        envelopeJson: JSON.stringify(stripEffectiveTo(envelope)),
         kind: "control",
         nowMs,
       });
@@ -350,7 +356,7 @@ export function handleCollaborationControl(
     appendTranscriptEntry(db, {
       spaceId,
       senderSessionId: envelope.sessionId,
-      envelopeJson: JSON.stringify(envelope),
+      envelopeJson: JSON.stringify(stripEffectiveTo(envelope)),
       kind: "control",
       nowMs,
     });

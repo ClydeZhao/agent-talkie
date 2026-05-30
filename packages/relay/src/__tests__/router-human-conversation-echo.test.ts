@@ -39,6 +39,13 @@ function closedWs(): WebSocket {
   } as unknown as WebSocket;
 }
 
+function transcriptCount(db: ReturnType<typeof openDatabase>, spaceId: string): number {
+  const row = db
+    .prepare("SELECT COUNT(*) AS n FROM transcript_entries WHERE space_id = ?")
+    .get(spaceId) as { n: number };
+  return row.n;
+}
+
 function convEnvelope(
   sessionId: string,
   spaceId: string,
@@ -98,6 +105,17 @@ describe("routeEnvelope human conversation sender echo", () => {
     if (parsed.success) {
       expect(parsed.data).toEqual(env);
     }
+    const row = db
+      .prepare(`SELECT envelope_json FROM transcript_entries WHERE space_id = ?`)
+      .get(spaceId) as { envelope_json: string };
+    const transcriptEnvelope = safeParseEnvelope(
+      JSON.parse(row.envelope_json) as unknown,
+    );
+    expect(transcriptEnvelope.success).toBe(true);
+    if (transcriptEnvelope.success) {
+      expect(transcriptEnvelope.data.to).toBeUndefined();
+      expect(transcriptEnvelope.data.effectiveTo).toBe(idA);
+    }
   });
 
   it("does not add sender echo for non-human broadcast conversation", () => {
@@ -147,7 +165,54 @@ describe("routeEnvelope human conversation sender echo", () => {
     expect(wsH.sent).toHaveLength(1);
   });
 
-  it("echoes direct human conversation to sender even when target socket is offline", () => {
+  it("strips client-supplied effectiveTo from non-default routes", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const now = Date.now();
+    const { id: idA } = createSession(db, {
+      displayName: "agent-a",
+      runtime: "t",
+      workspaceLabel: "w",
+    });
+    const { id: idB } = createSession(db, {
+      displayName: "agent-b",
+      runtime: "t",
+      workspaceLabel: "w",
+    });
+    const { id: spaceId } = insertSpaceWithSlug(db, { slug: "strip-effective", nowMs: now });
+    insertMembership(db, { spaceId, sessionId: idA, nowMs: now });
+    insertMembership(db, { spaceId, sessionId: idB, nowMs: now });
+
+    const wsA = captureWs();
+    const wsB = captureWs();
+    const env = { ...convEnvelope(idB, spaceId), effectiveTo: idA };
+
+    routeEnvelope({
+      db,
+      envelope: env,
+      senderWs: wsB,
+      getSocketForSession: (sid) => (sid === idA ? wsA : sid === idB ? wsB : undefined),
+    });
+
+    expect(wsA.sent).toHaveLength(1);
+    const live = safeParseEnvelope(JSON.parse(wsA.sent[0]!) as unknown);
+    expect(live.success).toBe(true);
+    if (live.success) {
+      expect(live.data.effectiveTo).toBeUndefined();
+    }
+    const row = db
+      .prepare(`SELECT envelope_json FROM transcript_entries WHERE space_id = ?`)
+      .get(spaceId) as { envelope_json: string };
+    const transcriptEnvelope = safeParseEnvelope(
+      JSON.parse(row.envelope_json) as unknown,
+    );
+    expect(transcriptEnvelope.success).toBe(true);
+    if (transcriptEnvelope.success) {
+      expect(transcriptEnvelope.data.effectiveTo).toBeUndefined();
+    }
+  });
+
+  it("queues direct human conversation for an active target even when target socket is offline", () => {
     const db = openDatabase(":memory:");
     migrate(db);
     const now = Date.now();
@@ -184,5 +249,99 @@ describe("routeEnvelope human conversation sender echo", () => {
     if (parsed.success) {
       expect(parsed.data).toEqual(env);
     }
+    expect(transcriptCount(db, spaceId)).toBe(1);
+  });
+
+  it("rejects direct human conversation to a non-member target without transcript append", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const now = Date.now();
+    const { id: idH } = createSession(db, {
+      displayName: "human",
+      runtime: "t",
+      workspaceLabel: "w",
+      isHuman: true,
+    });
+    const { id: idT } = createSession(db, {
+      displayName: "target",
+      runtime: "t",
+      workspaceLabel: "w",
+    });
+    const { id: spaceId } = insertSpaceWithSlug(db, { slug: "direct-gone", nowMs: now });
+    insertMembership(db, { spaceId, sessionId: idH, nowMs: now });
+    tryAssignSpaceOwnerIfUnsetForHuman(db, { spaceId, sessionId: idH });
+
+    const wsH = captureWs();
+    const wsT = captureWs();
+    const env = convEnvelope(idH, spaceId, { to: idT });
+
+    routeEnvelope({
+      db,
+      envelope: env,
+      senderWs: wsH,
+      getSocketForSession: (sid) => (sid === idT ? wsT : sid === idH ? wsH : undefined),
+    });
+
+    expect(wsT.sent).toHaveLength(0);
+    expect(wsH.sent).toHaveLength(1);
+    const err = JSON.parse(wsH.sent[0]!) as {
+      type?: string;
+      error?: string;
+    };
+    expect(err.type).toBe("protocol.error");
+    expect(err.error).toBe("target_not_in_space");
+    expect(transcriptCount(db, spaceId)).toBe(0);
+  });
+
+  it("does not consume idempotency for failed direct send before target joins", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const now = Date.now();
+    const { id: idH } = createSession(db, {
+      displayName: "human",
+      runtime: "t",
+      workspaceLabel: "w",
+      isHuman: true,
+    });
+    const { id: idT } = createSession(db, {
+      displayName: "target",
+      runtime: "t",
+      workspaceLabel: "w",
+    });
+    const { id: spaceId } = insertSpaceWithSlug(db, { slug: "direct-idem", nowMs: now });
+    insertMembership(db, { spaceId, sessionId: idH, nowMs: now });
+    tryAssignSpaceOwnerIfUnsetForHuman(db, { spaceId, sessionId: idH });
+
+    const wsH = captureWs();
+    const wsT = closedWs();
+    const env = convEnvelope(idH, spaceId, { to: idT });
+
+    const getSocketForSession = (sid: string) =>
+      sid === idT ? wsT : sid === idH ? wsH : undefined;
+
+    routeEnvelope({
+      db,
+      envelope: env,
+      senderWs: wsH,
+      getSocketForSession,
+    });
+
+    expect(JSON.parse(wsH.sent[0]!) as { error?: string }).toMatchObject({
+      error: "target_not_in_space",
+    });
+    expect(transcriptCount(db, spaceId)).toBe(0);
+
+    insertMembership(db, { spaceId, sessionId: idT, nowMs: now + 1 });
+    routeEnvelope({
+      db,
+      envelope: env,
+      senderWs: wsH,
+      getSocketForSession,
+    });
+
+    expect(wsH.sent).toHaveLength(2);
+    const parsed = safeParseEnvelope(JSON.parse(wsH.sent[1]!) as unknown);
+    expect(parsed.success).toBe(true);
+    expect(transcriptCount(db, spaceId)).toBe(1);
   });
 });

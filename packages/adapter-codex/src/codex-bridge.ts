@@ -17,14 +17,23 @@ const CODEX_SESSION_STATE_FILE = "adapter-codex-session-state.json";
 const CODEX_THREAD_STATE_FILE = "adapter-codex-thread-state.json";
 const BLOCKED_LINE_RE =
   /\b(permission|approval|approve|confirm|confirmation|blocked|interrupt(?:ed|ion)?|cancel(?:ed|led|ation)?)\b/i;
+const INTERNAL_CODEX_GOALS_WARNING_RE = /\bcodex_core::goals\b.*\bthread_goals\b/i;
 
 type PersistedSessionState = {
   sessionId: string;
   reconnectSecret: string;
+  identity?: SessionIdentity;
 };
 
 type PersistedThreadState = {
   spaces: Record<string, { threadId: string }>;
+};
+
+type SessionIdentity = {
+  displayName: string;
+  runtime: string;
+  workspaceLabel: string;
+  isHuman: boolean;
 };
 
 type SpawnResult = {
@@ -48,9 +57,38 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function isSessionIdentity(value: unknown): value is SessionIdentity {
+  return (
+    isRecord(value) &&
+    typeof value.displayName === "string" &&
+    typeof value.runtime === "string" &&
+    typeof value.workspaceLabel === "string" &&
+    typeof value.isHuman === "boolean"
+  );
+}
+
+function sameSessionIdentity(
+  a: SessionIdentity | undefined,
+  b: SessionIdentity,
+): boolean {
+  return (
+    a !== undefined &&
+    a.displayName === b.displayName &&
+    a.runtime === b.runtime &&
+    a.workspaceLabel === b.workspaceLabel &&
+    a.isHuman === b.isHuman
+  );
+}
+
 function normalizeText(value: string): string | undefined {
   const text = value.trim();
   return text === "" ? undefined : text;
+}
+
+function shouldReportBlockedStderrLine(line: string): boolean {
+  return (
+    BLOCKED_LINE_RE.test(line) && !INTERNAL_CODEX_GOALS_WARNING_RE.test(line)
+  );
 }
 
 function resolveSessionStatePath(): string {
@@ -74,6 +112,9 @@ function loadPersistedSessionState(
       return {
         sessionId: parsed.sessionId,
         reconnectSecret: parsed.reconnectSecret,
+        identity: isSessionIdentity(parsed.identity)
+          ? parsed.identity
+          : undefined,
       };
     }
   } catch {
@@ -156,13 +197,13 @@ function shouldHandleConversation(
   registeredSessionId: string,
 ): envelope is Envelope & {
   kind: "conversation";
-  type: "chat.message";
+  type: "chat.message" | "chat.direct";
   payload: { text: string };
   spaceId: string;
 } {
   if (
     envelope.kind !== "conversation" ||
-    envelope.type !== "chat.message" ||
+    (envelope.type !== "chat.message" && envelope.type !== "chat.direct") ||
     envelope.sessionId === registeredSessionId
   ) {
     return false;
@@ -382,9 +423,9 @@ export async function runCodexAdapter(opts?: {
   const sessionInput = {
     displayName: process.env.TALKIE_CODEX_DISPLAY_NAME ?? "codex-adapter",
     runtime: process.env.TALKIE_CODEX_RUNTIME ?? "adapter-codex",
-    workspaceLabel: process.env.TALKIE_CODEX_WORKSPACE ?? ".",
+    workspaceLabel: process.env.TALKIE_CODEX_WORKSPACE_LABEL ?? ".",
     isHuman: false,
-  } as const;
+  } satisfies SessionIdentity;
 
   const connectClient = async (): Promise<TalkieSessionClient> => {
     const client = new ClientClass({
@@ -399,6 +440,7 @@ export async function runCodexAdapter(opts?: {
     persistSessionState(sessionStatePath, {
       sessionId: reg.sessionId,
       reconnectSecret: reg.reconnectSecret,
+      identity: sessionInput,
     });
     return reg.sessionId;
   };
@@ -418,10 +460,19 @@ export async function runCodexAdapter(opts?: {
   let registeredSessionId: string;
   let resumedPersistedSession = false;
   const persistedSession = loadPersistedSessionState(sessionStatePath);
-  if (persistedSession) {
+  if (
+    persistedSession &&
+    sameSessionIdentity(persistedSession.identity, sessionInput)
+  ) {
     try {
-      const resumed = await client.resume(persistedSession);
-      persistSessionState(sessionStatePath, resumed);
+      const resumed = await client.resume({
+        sessionId: persistedSession.sessionId,
+        reconnectSecret: persistedSession.reconnectSecret,
+      });
+      persistSessionState(sessionStatePath, {
+        ...resumed,
+        identity: sessionInput,
+      });
       registeredSessionId = resumed.sessionId;
       resumedPersistedSession = true;
     } catch {
@@ -432,6 +483,9 @@ export async function runCodexAdapter(opts?: {
       registeredSessionId = fresh.sessionId;
     }
   } else {
+    if (persistedSession) {
+      clearPersistedSessionState(sessionStatePath);
+    }
     registeredSessionId = await registerNewSession(client);
   }
 
@@ -479,6 +533,8 @@ export async function runCodexAdapter(opts?: {
 
     const prompt = envelope.payload.text.trim();
     const spaceId = envelope.spaceId;
+    const replyTo =
+      envelope.type === "chat.direct" ? envelope.sessionId : undefined;
     if (activeTurns.has(spaceId)) {
       sendBlockedMetadata(
         client,
@@ -540,7 +596,7 @@ export async function runCodexAdapter(opts?: {
       });
 
       const stderrPromise = readStderrLines(child.stderr, (line) => {
-        if (!BLOCKED_LINE_RE.test(line)) {
+        if (!shouldReportBlockedStderrLine(line)) {
           return;
         }
         if (blockedLines.has(line)) {
@@ -566,8 +622,9 @@ export async function runCodexAdapter(opts?: {
           id: randomUUID(),
           sessionId: registeredSessionId,
           kind: "conversation",
-          type: "chat.message",
+          type: replyTo === undefined ? "chat.message" : "chat.direct",
           spaceId,
+          ...(replyTo === undefined ? {} : { to: replyTo }),
           payload: { text: latestReply },
         });
         return;

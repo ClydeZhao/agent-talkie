@@ -8,4 +8,4 @@
 
 ## Entries
 
-No entries yet.
+- For desktop runtime UAT, do not treat shell-level macOS automation as a substitute for Computer Use or human observation unless the preflight proves it can both control and observe the real apps. At minimum, verify Accessibility trust, screen-capture access, a click/type driver, visible target app windows, and readable evidence of the actual Talkie flow before relying on it for Codex App or Cursor App validation.

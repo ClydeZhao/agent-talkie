@@ -1,7 +1,8 @@
 import http from "node:http";
+import { fork } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   agreeProtocolVersion,
   buildVersionMismatchFailure,
@@ -20,6 +21,7 @@ import {
   migrate,
   normalizeSpaceSlug,
   openDatabase,
+  upsertCollaborationStatus,
 } from "@agent-talkie/persistence";
 import type Database from "better-sqlite3";
 import sirv from "sirv";
@@ -31,13 +33,16 @@ import { routeEnvelope } from "./router.js";
 import { SessionRegistry } from "./session-registry.js";
 import {
   handleMembershipRemove,
+  handleSpaceArchive,
   handleSpaceDestroy,
   handleSpaceJoin,
   handleSpaceLeave,
+  isSpaceArchiveEnvelope,
   isMembershipRemoveEnvelope,
   isSpaceDestroyEnvelope,
   isSpaceJoinEnvelope,
   isSpaceLeaveEnvelope,
+  pruneStaleDisconnectedMemberships,
   pruneExpiredArchivedSpaces,
 } from "./space-lifecycle.js";
 import { parseAndValidateEnvelope } from "./validation.js";
@@ -97,6 +102,17 @@ export function dispatchValidatedEnvelope(
       sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
       return;
     }
+    const creatorOrchestrator =
+      envelope.payload.creatorOrchestrator === true ? true : false;
+    const label =
+      typeof envelope.payload.label === "string" &&
+      envelope.payload.label.trim().length > 0
+        ? envelope.payload.label.trim()
+        : undefined;
+    if (label !== undefined && label.length > 128) {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
 
     try {
       const slugNorm = normalizeSpaceSlug(slug);
@@ -112,12 +128,17 @@ export function dispatchValidatedEnvelope(
       /* normalizeSpaceSlug may throw for invalid slugs; handleSpaceJoin will reject below */
     }
 
-    const out = handleSpaceJoin(ctx.db, {
+    const joinArgs: Parameters<typeof handleSpaceJoin>[1] = {
       sessionId: ctx.boundSessionId,
       idempotencyKey,
       slugRaw: slug,
       nowMs: Date.now(),
-    });
+      creatorOrchestrator,
+    };
+    if (label !== undefined) {
+      joinArgs.label = label;
+    }
+    const out = handleSpaceJoin(ctx.db, joinArgs);
     if (out.kind === "error") {
       sendJson(ctx.ws, { type: "protocol.error", error: out.error });
       if (out.closeConnection) {
@@ -129,6 +150,13 @@ export function dispatchValidatedEnvelope(
       type: "space.joined",
       spaceId: out.spaceId,
       slug: out.slug,
+    });
+    const activityNow = Date.now();
+    upsertCollaborationStatus(ctx.db, {
+      spaceId: out.spaceId,
+      sessionId: ctx.boundSessionId,
+      patch: { lastActivityMs: activityNow },
+      nowMs: activityNow,
     });
     void sendTranscriptCatchUp({
       db: ctx.db,
@@ -160,6 +188,50 @@ export function dispatchValidatedEnvelope(
       type: "space.left",
       spaceId: out.spaceId,
     });
+    return;
+  }
+
+  if (isSpaceArchiveEnvelope(envelope)) {
+    const idempotencyKey = envelope.idempotencyKey;
+    if (!idempotencyKey) {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const slug = envelope.payload.slug;
+    if (typeof slug !== "string") {
+      sendJson(ctx.ws, { type: "protocol.error", error: "invalid_envelope" });
+      return;
+    }
+    const out = handleSpaceArchive(ctx.db, {
+      sessionId: ctx.boundSessionId,
+      idempotencyKey,
+      slugRaw: slug,
+      nowMs: Date.now(),
+    });
+    if (out.kind === "error") {
+      sendJson(ctx.ws, { type: "protocol.error", error: out.error });
+      if (out.closeConnection) {
+        ctx.ws.close();
+      }
+      return;
+    }
+    for (const sid of out.closeSessionIds) {
+      if (sid === ctx.boundSessionId) {
+        continue;
+      }
+      const s = ctx.registry.get(sid);
+      if (s) {
+        sendJson(s, { type: "space.archived", slug: out.slug });
+      }
+    }
+    sendJson(ctx.ws, { type: "space.archived", slug: out.slug });
+    for (const sid of out.closeSessionIds) {
+      const s = ctx.registry.get(sid);
+      if (s) {
+        s.close();
+      }
+    }
+    ctx.ws.close();
     return;
   }
 
@@ -253,6 +325,16 @@ export function dispatchValidatedEnvelope(
     return;
   }
 
+  if (envelope.spaceId !== undefined) {
+    const activityNow = Date.now();
+    upsertCollaborationStatus(ctx.db, {
+      spaceId: envelope.spaceId,
+      sessionId: ctx.boundSessionId,
+      patch: { lastActivityMs: activityNow },
+      nowMs: activityNow,
+    });
+  }
+
   routeEnvelope({
     db: ctx.db,
     envelope,
@@ -317,6 +399,7 @@ export async function createRelayServer(opts: {
   relayGenerationToken?: string;
   idleShutdownMs?: number;
   onIdleShutdown?: () => void | Promise<void>;
+  presenceStaleAfterMs?: number;
 }): Promise<{ url: string; dbPath: string; close: () => Promise<void> }> {
   const db = openDatabase(opts.dbPath);
   migrate(db);
@@ -328,6 +411,7 @@ export async function createRelayServer(opts: {
   const registry = new SessionRegistry();
   const destroyedSlugs = new Map<string, number>();
   const connStates = new Map<WebSocket, ConnState>();
+  const presenceStaleAfterMs = opts.presenceStaleAfterMs ?? 120000;
 
   const server = http.createServer();
   const wss = new WebSocketServer({ server });
@@ -363,6 +447,112 @@ export async function createRelayServer(opts: {
     };
   }
 
+  let spaceGcInterval: ReturnType<typeof setInterval> | undefined;
+  let boundPort: number | undefined;
+  const restartSupported = basename(opts.dbPath) === "relay.sqlite";
+  const onlineSessionIds = (): Set<string> => {
+    const ids = new Set<string>();
+    for (const [client, state] of connStates) {
+      if (client.readyState === client.OPEN && state.boundSessionId !== null) {
+        ids.add(state.boundSessionId);
+      }
+    }
+    return ids;
+  };
+
+  const pruneStaleMemberships = (): void => {
+    pruneStaleDisconnectedMemberships(db, {
+      nowMs: Date.now(),
+      staleAfterMs: presenceStaleAfterMs * 3,
+      onlineSessionIds: onlineSessionIds(),
+    });
+  };
+
+  const spawnReplacementRelay = (): void => {
+    if (!restartSupported || boundPort === undefined) {
+      return;
+    }
+    const daemonEntry = require.resolve("@agent-talkie/relay/daemon");
+    const child = fork(daemonEntry, [], {
+      env: {
+        ...process.env,
+        AGENT_TALKIE_DATA_DIR: dirname(opts.dbPath),
+        AGENT_TALKIE_RELAY_PORT: String(boundPort),
+      },
+      detached: true,
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      execArgv: [],
+    });
+    child.once("message", () => {
+      if (child.connected) {
+        child.disconnect();
+      }
+    });
+    child.unref();
+  };
+
+  let closePromise: Promise<void> | null = null;
+  const gracefulClose = (): Promise<void> => {
+    closePromise ??= new Promise((resolve, reject) => {
+      if (spaceGcInterval !== undefined) {
+        clearInterval(spaceGcInterval);
+      }
+      clearIdle();
+      void (async () => {
+        try {
+          for (const client of wss.clients) {
+            if (client.readyState === WebSocket.OPEN) {
+              client.close(1001, "relay_shutdown");
+            }
+          }
+          const deadline = Date.now() + RELAY_POLITE_CLOSE_PHASE_MS;
+          while (Date.now() < deadline) {
+            let anyActive = false;
+            for (const c of wss.clients) {
+              if (
+                c.readyState === WebSocket.OPEN ||
+                c.readyState === WebSocket.CONNECTING
+              ) {
+                anyActive = true;
+                break;
+              }
+            }
+            if (!anyActive) {
+              break;
+            }
+            await new Promise<void>((r) => {
+              setTimeout(r, 25);
+            });
+          }
+          for (const client of wss.clients) {
+            client.terminate();
+          }
+          wss.close((err) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            try {
+              db.close();
+            } catch {
+              /* ignore */
+            }
+            server.close((e) => {
+              if (e) {
+                reject(e);
+              } else {
+                resolve();
+              }
+            });
+          });
+        } catch (err) {
+          reject(err);
+        }
+      })();
+    });
+    return closePromise;
+  };
+
   server.on("request", (req, res) => {
     if ((req.headers.upgrade ?? "").toLowerCase() === "websocket") {
       return;
@@ -371,7 +561,7 @@ export async function createRelayServer(opts: {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname.startsWith("/__agent-talkie/v1/")) {
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
       if (req.method === "OPTIONS") {
         res.writeHead(204);
@@ -422,14 +612,81 @@ export async function createRelayServer(opts: {
         res.end(JSON.stringify({ ok: false, error: "missing_slug" }));
         return;
       }
+      pruneStaleMemberships();
       const summary = getOversightSpaceSummaryBySlug(db, slug);
       if (summary === undefined) {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: false, error: "space_not_found" }));
         return;
       }
+      const onlineIds = onlineSessionIds();
+      const now = Date.now();
+      const withPresence = {
+        ...summary,
+        members: summary.members.map((member) => {
+          let presenceState: "online" | "offline" | "stale" = "offline";
+          if (onlineIds.has(member.sessionId)) {
+            presenceState = "online";
+          } else if (
+            member.lastSeenAtMs !== null &&
+            now - member.lastSeenAtMs > presenceStaleAfterMs
+          ) {
+            presenceState = "stale";
+          }
+          return { ...member, presenceState };
+        }),
+      };
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(summary));
+      res.end(JSON.stringify(withPresence));
+      return;
+    }
+
+    if (
+      req.method === "GET" &&
+      url.pathname === "/__agent-talkie/v1/relay/status"
+    ) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          running: true,
+          activeConnectionCount: wss.clients.size,
+          stopSupported: true,
+          restartSupported,
+        }),
+      );
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      url.pathname === "/__agent-talkie/v1/relay/restart"
+    ) {
+      if (!restartSupported) {
+        res.writeHead(409, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "restart_unsupported" }));
+        return;
+      }
+      res.writeHead(202, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      setTimeout(() => {
+        void gracefulClose()
+          .then(() => {
+            spawnReplacementRelay();
+          })
+          .catch(() => {});
+      }, 0);
+      return;
+    }
+
+    if (
+      req.method === "POST" &&
+      url.pathname === "/__agent-talkie/v1/relay/stop"
+    ) {
+      res.writeHead(202, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      setTimeout(() => {
+        void gracefulClose().catch(() => {});
+      }, 0);
       return;
     }
 
@@ -437,6 +694,7 @@ export async function createRelayServer(opts: {
       req.method === "GET" &&
       url.pathname === "/__agent-talkie/v1/oversight/spaces"
     ) {
+      pruneStaleMemberships();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(listOversightSpaces(db)));
       return;
@@ -464,8 +722,9 @@ export async function createRelayServer(opts: {
     res.end("Not Found");
   });
 
-  const spaceGcInterval = setInterval(() => {
+  spaceGcInterval = setInterval(() => {
     try {
+      pruneStaleMemberships();
       pruneExpiredArchivedSpaces(db, Date.now());
     } catch {
       /* ignore */
@@ -701,6 +960,10 @@ export async function createRelayServer(opts: {
     server.once("error", reject);
     server.listen(listenPort, LISTEN_HOST, () => {
       server.off("error", reject);
+      const address = server.address();
+      if (typeof address === "object" && address !== null) {
+        boundPort = address.port;
+      }
       resolve();
     });
   });
@@ -716,61 +979,6 @@ export async function createRelayServer(opts: {
   return {
     url: `ws://${LISTEN_HOST}:${actualPort}`,
     dbPath: opts.dbPath,
-    close: () =>
-      new Promise((resolve, reject) => {
-        clearInterval(spaceGcInterval);
-        clearIdle();
-        void (async () => {
-          try {
-            for (const client of wss.clients) {
-              if (client.readyState === WebSocket.OPEN) {
-                client.close(1001, "relay_shutdown");
-              }
-            }
-            const deadline = Date.now() + RELAY_POLITE_CLOSE_PHASE_MS;
-            while (Date.now() < deadline) {
-              let anyActive = false;
-              for (const c of wss.clients) {
-                if (
-                  c.readyState === WebSocket.OPEN ||
-                  c.readyState === WebSocket.CONNECTING
-                ) {
-                  anyActive = true;
-                  break;
-                }
-              }
-              if (!anyActive) {
-                break;
-              }
-              await new Promise<void>((r) => {
-                setTimeout(r, 25);
-              });
-            }
-            for (const client of wss.clients) {
-              client.terminate();
-            }
-            wss.close((err) => {
-              if (err) {
-                reject(err);
-                return;
-              }
-              try {
-                db.close();
-              } catch {
-                /* ignore */
-              }
-              server.close((e) => {
-                if (e) {
-                  reject(e);
-                } else {
-                  resolve();
-                }
-              });
-            });
-          } catch (e) {
-            reject(e);
-          }
-        })();
-      }),
+    close: gracefulClose,
   };
 }

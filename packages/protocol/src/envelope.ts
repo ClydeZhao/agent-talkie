@@ -21,6 +21,7 @@ export const envelopeSchema = z.object({
   idempotencyKey: z.string().uuid().optional(),
   seq: z.number().int().nonnegative().optional(),
   to: z.string().uuid().optional(),
+  effectiveTo: z.string().uuid().optional(),
   spaceId: z.string().uuid().optional(),
 });
 

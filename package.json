@@ -9,6 +9,7 @@
     "packages/cli",
     "packages/client",
     "packages/dashboard",
+    "packages/distribution",
     "packages/persistence",
     "packages/protocol",
     "packages/relay",
@@ -20,6 +21,7 @@
   "scripts": {
     "test": "npm run test -w @agent-talkie/protocol && npm run test -w @agent-talkie/persistence && npm run test -w @agent-talkie/relay && npm run test -w @agent-talkie/supervisor && npm run test -w @agent-talkie/cli && npm run test -w @agent-talkie/client && npm run test -w @agent-talkie/dashboard && npm run test -w @agent-talkie/adapter-stdio && npm run test -w @agent-talkie/adapter-codex && npm run test -w @agent-talkie/adapter-cursor-mcp",
     "build": "npm run build -w @agent-talkie/protocol && npm run build -w @agent-talkie/persistence && npm run build -w @agent-talkie/dashboard && npm run build -w @agent-talkie/relay && npm run build -w @agent-talkie/supervisor && npm run build -w @agent-talkie/cli && npm run build -w @agent-talkie/client && npm run build -w @agent-talkie/adapter-stdio && npm run build -w @agent-talkie/adapter-codex && npm run build -w @agent-talkie/adapter-cursor-mcp",
-    "smoke:local": "npm run build && node scripts/local-codex-cursor-smoke.mjs"
+    "smoke:local": "npm run build && node scripts/local-codex-cursor-smoke.mjs",
+    "smoke:codex-claude": "npm run build && node scripts/local-codex-claude-smoke.mjs"
   }
 }

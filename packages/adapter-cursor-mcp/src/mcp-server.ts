@@ -12,9 +12,14 @@ import { fileURLToPath } from "node:url";
 import { TalkieSessionClient } from "@agent-talkie/client";
 import {
   getCollaborationMetadataSnapshot,
+  getOrchestratorSessionId,
   getOversightSpaceSummaryBySlug,
+  getSessionById,
   getSpaceBySlug,
+  listTranscriptEntriesAfterSeq,
+  listTranscriptTailBySeq,
   listOversightBlockedSessionsBySlug,
+  listOversightSpaces,
   listOversightTranscriptTailBySlug,
   migrate,
   normalizeSpaceSlug,
@@ -34,8 +39,7 @@ import {
 import { z } from "zod";
 
 export const DEFAULT_TIMELINE_LIMIT = 50;
-const CURSOR_MCP_SESSION_STATE_FILE = "adapter-cursor-mcp-session-state.json";
-const CURSOR_MCP_INBOX_STATE_FILE = "adapter-cursor-mcp-inbox-state.json";
+const DEFAULT_MCP_STATE_NAMESPACE = "adapter-cursor-mcp";
 const SESSION_INBOX_URI = "talkie://session/inbox";
 const SESSION_STATE_URI = "talkie://session/state";
 
@@ -51,6 +55,7 @@ type PersistedAttachmentState = {
 
 type PersistedMcpState = {
   attachments: Record<string, PersistedAttachmentState>;
+  transcriptCursors: Record<string, number>;
 };
 
 type InboxItem = {
@@ -90,24 +95,45 @@ function resolveDbPath(deps?: CreateMcpServerDeps): string {
   return deps?.dbPath ?? join(resolveAgentTalkieDataDir(), "relay.sqlite");
 }
 
+function resolveMcpStateNamespace(): string {
+  const raw =
+    process.env.TALKIE_MCP_STATE_NAMESPACE ??
+    process.env.TALKIE_MCP_RUNTIME ??
+    DEFAULT_MCP_STATE_NAMESPACE;
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized === "" ? DEFAULT_MCP_STATE_NAMESPACE : normalized;
+}
+
 function resolveSessionStatePath(): string {
-  return join(resolveAgentTalkieDataDir(), CURSOR_MCP_SESSION_STATE_FILE);
+  return join(
+    resolveAgentTalkieDataDir(),
+    `${resolveMcpStateNamespace()}-session-state.json`,
+  );
 }
 
 function resolveInboxStatePath(): string {
-  return join(resolveAgentTalkieDataDir(), CURSOR_MCP_INBOX_STATE_FILE);
+  return join(
+    resolveAgentTalkieDataDir(),
+    `${resolveMcpStateNamespace()}-inbox-state.json`,
+  );
 }
 
 function loadPersistedMcpState(path: string): PersistedMcpState {
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
     if (typeof parsed !== "object" || parsed === null) {
-      return { attachments: {} };
+      return { attachments: {}, transcriptCursors: {} };
     }
     const attachments = (parsed as { attachments?: unknown }).attachments;
     if (typeof attachments !== "object" || attachments === null) {
-      return { attachments: {} };
+      return { attachments: {}, transcriptCursors: {} };
     }
+    const transcriptCursors = (parsed as { transcriptCursors?: unknown })
+      .transcriptCursors;
     return {
       attachments: Object.fromEntries(
         Object.entries(attachments as Record<string, unknown>).flatMap(
@@ -144,11 +170,22 @@ function loadPersistedMcpState(path: string): PersistedMcpState {
           },
         ),
       ),
+      transcriptCursors:
+        typeof transcriptCursors === "object" && transcriptCursors !== null
+          ? Object.fromEntries(
+              Object.entries(transcriptCursors as Record<string, unknown>).flatMap(
+                ([slug, value]) =>
+                  typeof value === "number" && Number.isInteger(value) && value >= 0
+                    ? [[slug, value]]
+                    : [],
+              ),
+            )
+          : {},
     };
   } catch {
     /* ignore */
   }
-  return { attachments: {} };
+  return { attachments: {}, transcriptCursors: {} };
 }
 
 function persistMcpState(path: string, state: PersistedMcpState): void {
@@ -217,6 +254,50 @@ function parseInputSlug(raw: string): string {
   return normalizeSpaceSlug(raw);
 }
 
+function generateSpaceSlug(nowMs = Date.now()): string {
+  return `talkie-${nowMs.toString(36)}-${randomUUID().slice(0, 8)}`;
+}
+
+function generateSpaceLabel(now = new Date()): string {
+  const yyyy = String(now.getFullYear());
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const sec = String(now.getSeconds()).padStart(2, "0");
+  return `Talkie Space ${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}`;
+}
+
+function labelFromSlug(slug: string): string {
+  return slug
+    .split("-")
+    .filter((part) => part.length > 0)
+    .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildJoinPrompt(args: { slug: string; label: string }): string {
+  return [
+    "Join this local Agent Talkie Space.",
+    `Space label: ${args.label}`,
+    `Space slug: ${args.slug}`,
+    "Use your Agent Talkie runtime tooling to join this slug, then send a short hello/ack to the orchestrator.",
+    "Do not ask the human to run low-level join/send/pull transport commands.",
+  ].join("\n");
+}
+
+function extractSlugFromJoinPrompt(prompt: string): string {
+  const explicit = /Space slug:\s*([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(prompt);
+  if (explicit?.[1]) {
+    return normalizeSpaceSlug(explicit[1]);
+  }
+  const uri = /talkie:\/\/space\/([a-z0-9]+(?:-[a-z0-9]+)*)/i.exec(prompt);
+  if (uri?.[1]) {
+    return normalizeSpaceSlug(uri[1]);
+  }
+  throw new Error("Could not find a Talkie space slug in the join prompt.");
+}
+
 export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
   const statePath = resolveSessionStatePath();
   let persistedState = loadPersistedMcpState(statePath);
@@ -227,7 +308,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
   let relayPromise: ReturnType<typeof ensureRelay> | null = null;
 
   const mcp = new McpServer(
-    { name: "agent-talkie-cursor-mcp", version: "0.0.0" },
+    { name: "agent-talkie-mcp", version: "0.0.0" },
     {
       capabilities: {
         resources: {
@@ -294,6 +375,108 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     return items;
   }
 
+  function latestTranscriptSeq(spaceId: string): number {
+    const dbPath = resolveDbPath(deps);
+    if (!existsSync(dbPath)) {
+      return 0;
+    }
+    const db = openDatabase(dbPath);
+    try {
+      migrate(db);
+      const rows = listTranscriptTailBySeq(db, { spaceId, limit: 1 });
+      return rows[0]?.relaySeq ?? 0;
+    } finally {
+      db.close();
+    }
+  }
+
+  function shouldDeliverTranscriptEnvelope(
+    db: ReturnType<typeof openDatabase>,
+    attachment: Attachment | PersistedAttachmentState,
+    envelope: Envelope,
+  ): boolean {
+    if (envelope.spaceId !== attachment.spaceId) {
+      return false;
+    }
+    if (envelope.sessionId === attachment.sessionId) {
+      return false;
+    }
+    const directTarget =
+      envelope.to ?? (envelope.kind === "conversation" ? envelope.effectiveTo : undefined);
+    if (directTarget !== undefined) {
+      return directTarget === attachment.sessionId;
+    }
+    if (envelope.kind === "conversation") {
+      const sender = getSessionById(db, envelope.sessionId);
+      if (sender?.isHuman) {
+        return getOrchestratorSessionId(db, attachment.spaceId) === attachment.sessionId;
+      }
+    }
+    return true;
+  }
+
+  function syncInboxFromTranscript(slug?: string): void {
+    const dbPath = resolveDbPath(deps);
+    if (!existsSync(dbPath)) {
+      return;
+    }
+    const targets =
+      slug !== undefined
+        ? [[slug, persistedState.attachments[slug]] as const]
+        : Object.entries(persistedState.attachments);
+    const db = openDatabase(dbPath);
+    let cursorChanged = false;
+    try {
+      migrate(db);
+      for (const [targetSlug, attachment] of targets) {
+        if (attachment === undefined) {
+          continue;
+        }
+        let afterSeq = persistedState.transcriptCursors[targetSlug] ?? 0;
+        for (;;) {
+          const rows = listTranscriptEntriesAfterSeq(db, {
+            spaceId: attachment.spaceId,
+            afterSeq,
+            limit: 500,
+          });
+          if (rows.length === 0) {
+            break;
+          }
+          for (const row of rows) {
+            afterSeq = Math.max(afterSeq, row.relaySeq);
+            let rawEnvelope: unknown;
+            try {
+              rawEnvelope = JSON.parse(row.envelopeJson) as unknown;
+            } catch {
+              continue;
+            }
+            const parsed = safeParseEnvelope(rawEnvelope);
+            if (
+              parsed.success &&
+              shouldDeliverTranscriptEnvelope(db, attachment, parsed.data)
+            ) {
+              pushInboxEnvelope({
+                slug: targetSlug,
+                receiverSessionId: attachment.sessionId,
+                envelope: parsed.data,
+              });
+            }
+          }
+          persistedState.transcriptCursors[targetSlug] = afterSeq;
+          cursorChanged = true;
+          if (rows.length < 500) {
+            break;
+          }
+        }
+      }
+    } finally {
+      db.close();
+    }
+    if (cursorChanged) {
+      persistState();
+    }
+  }
+
   function resolveSpaceIdFromInput(input: {
     spaceId?: string;
     slug?: string;
@@ -329,7 +512,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     persisted?: PersistedAttachmentState;
     name?: string;
     runtime?: string;
-    workspace?: string;
+    workspaceLabel?: string;
   }): {
     displayName: string;
     runtime: string;
@@ -348,9 +531,9 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         process.env.TALKIE_MCP_RUNTIME ??
         "adapter-cursor-mcp",
       workspaceLabel:
-        args.workspace ??
+        args.workspaceLabel ??
         args.persisted?.workspaceLabel ??
-        process.env.TALKIE_MCP_WORKSPACE ??
+        process.env.TALKIE_MCP_WORKSPACE_LABEL ??
         ".",
       isHuman: process.env.TALKIE_MCP_IS_HUMAN === "0" ? false : true,
     };
@@ -371,7 +554,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     client: TalkieSessionClient;
     name?: string;
     runtime?: string;
-    workspace?: string;
+    workspaceLabel?: string;
     persisted?: PersistedAttachmentState;
   }): Promise<{
     sessionId: string;
@@ -384,7 +567,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
       persisted: args.persisted,
       name: args.name,
       runtime: args.runtime,
-      workspace: args.workspace,
+      workspaceLabel: args.workspaceLabel,
     });
     const registered = await args.client.registerSession(identity);
     return {
@@ -414,10 +597,12 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
 
   async function ensureAttachment(args: {
     slug: string;
+    label?: string;
     createIfMissing: boolean;
     name?: string;
     runtime?: string;
-    workspace?: string;
+    workspaceLabel?: string;
+    creatorOrchestrator?: boolean;
   }): Promise<Attachment> {
     const existing = attachmentsBySlug.get(args.slug);
     if (existing) {
@@ -465,7 +650,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
           client,
           name: args.name,
           runtime: args.runtime,
-          workspace: args.workspace,
+          workspaceLabel: args.workspaceLabel,
           persisted,
         });
       }
@@ -490,6 +675,10 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         joined = await client.joinSpace({
           slug: args.slug,
           idempotencyKey: randomUUID(),
+          ...(args.label !== undefined ? { label: args.label } : {}),
+          ...(args.creatorOrchestrator !== undefined
+            ? { creatorOrchestrator: args.creatorOrchestrator }
+            : {}),
         });
       } catch (error) {
         if (!persisted || !isAlreadyInSpaceError(error)) {
@@ -501,7 +690,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
           client,
           name: args.name,
           runtime: args.runtime,
-          workspace: args.workspace,
+          workspaceLabel: args.workspaceLabel,
           persisted,
         });
         client.onEnvelope((envelope) => {
@@ -520,6 +709,10 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         joined = await client.joinSpace({
           slug: args.slug,
           idempotencyKey: randomUUID(),
+          ...(args.label !== undefined ? { label: args.label } : {}),
+          ...(args.creatorOrchestrator !== undefined
+            ? { creatorOrchestrator: args.creatorOrchestrator }
+            : {}),
         });
       }
 
@@ -536,8 +729,12 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
       };
       if (joined.slug !== args.slug) {
         delete persistedState.attachments[args.slug];
+        delete persistedState.transcriptCursors[args.slug];
         attachmentsBySlug.delete(args.slug);
       }
+      const shouldInitializeCursor =
+        persisted === undefined &&
+        persistedState.transcriptCursors[joined.slug] === undefined;
       persistedState.attachments[joined.slug] = {
         sessionId: attachment.sessionId,
         reconnectSecret: attachment.reconnectSecret,
@@ -547,6 +744,11 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         runtime: attachment.runtime,
         workspaceLabel: attachment.workspaceLabel,
       };
+      if (shouldInitializeCursor) {
+        persistedState.transcriptCursors[joined.slug] = latestTranscriptSeq(
+          attachment.spaceId,
+        );
+      }
       persistState();
       attachmentsBySlug.set(joined.slug, Promise.resolve(attachment));
       notifySessionResourcesUpdated();
@@ -555,6 +757,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
       attachmentsBySlug.delete(args.slug);
       if (persisted === undefined) {
         delete persistedState.attachments[args.slug];
+        delete persistedState.transcriptCursors[args.slug];
         persistState();
       }
       throw error;
@@ -563,11 +766,16 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     return promise;
   }
 
-  async function ensureKnownAttachments(): Promise<void> {
-    await Promise.all(
+  async function ensureKnownAttachments(): Promise<string[]> {
+    const results = await Promise.allSettled(
       Object.keys(persistedState.attachments).map(async (slug) => {
         await ensureAttachment({ slug, createIfMissing: false });
+        return slug;
       }),
+    );
+    const slugs = Object.keys(persistedState.attachments);
+    return results.flatMap((result, index) =>
+      result.status === "rejected" ? [slugs[index] ?? "unknown"] : [],
     );
   }
 
@@ -585,7 +793,19 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     slug: z.string().min(1).max(64),
     name: z.string().min(1).max(128).optional(),
     runtime: z.string().min(1).max(64).optional(),
-    workspace: z.string().min(1).max(256).optional(),
+    workspaceLabel: z.string().min(1).max(256).optional(),
+  });
+  const createSpaceInput = z.object({
+    name: z.string().min(1).max(128).optional(),
+    runtime: z.string().min(1).max(64).optional(),
+    workspaceLabel: z.string().min(1).max(256).optional(),
+    creatorOrchestrator: z.boolean().optional(),
+  });
+  const joinFromPromptInput = z.object({
+    prompt: z.string().min(1).max(12000),
+    name: z.string().min(1).max(128).optional(),
+    runtime: z.string().min(1).max(64).optional(),
+    workspaceLabel: z.string().min(1).max(256).optional(),
   });
   const sendMessageInput = z
     .object({
@@ -623,6 +843,182 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     limit: z.number().int().positive().max(100).optional(),
   });
 
+  function readOversightSummary(slug: string):
+    | ReturnType<typeof getOversightSpaceSummaryBySlug>
+    | undefined {
+    const dbPath = resolveDbPath(deps);
+    if (!existsSync(dbPath)) {
+      return undefined;
+    }
+    const db = openDatabase(dbPath);
+    try {
+      migrate(db);
+      return getOversightSpaceSummaryBySlug(db, slug);
+    } finally {
+      db.close();
+    }
+  }
+
+  function promptReferencesActiveSpace(slug: string): boolean {
+    const dbPath = resolveDbPath(deps);
+    if (!existsSync(dbPath)) {
+      return false;
+    }
+    const db = openDatabase(dbPath);
+    try {
+      migrate(db);
+      return listOversightSpaces(db).some((space) => space.slug === slug);
+    } finally {
+      db.close();
+    }
+  }
+
+  mcp.registerTool(
+    "create_space",
+    {
+      description:
+        "Create a local Talkie Space without requiring the human to name it, join this MCP-backed runtime session, and return a dashboard URL plus pasteable join prompt.",
+      inputSchema: z.any(),
+    },
+    async (raw: unknown): Promise<CallToolResult> => {
+      const parsed = createSpaceInput.safeParse(raw ?? {});
+      if (!parsed.success) {
+        return validationError(parsed.error.message);
+      }
+      const relay = await (relayPromise ??= ensureRelay({}));
+      const slug = generateSpaceSlug();
+      const label = generateSpaceLabel();
+      const attachment = await ensureAttachment({
+        slug,
+        label,
+        createIfMissing: true,
+        name: parsed.data.name,
+        runtime: parsed.data.runtime,
+        workspaceLabel: parsed.data.workspaceLabel,
+        creatorOrchestrator: parsed.data.creatorOrchestrator ?? true,
+      });
+      const summary = readOversightSummary(attachment.slug);
+      const persistedLabel = summary?.label ?? label;
+      const dashboardUrl = `http://127.0.0.1:${relay.port}/dashboard?space=${encodeURIComponent(
+        attachment.slug,
+      )}`;
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              slug: attachment.slug,
+              label: persistedLabel,
+              spaceId: attachment.spaceId,
+              sessionId: attachment.sessionId,
+              displayName: attachment.displayName,
+              runtime: attachment.runtime,
+              workspaceLabel: attachment.workspaceLabel,
+              orchestratorSessionId:
+                summary?.orchestratorSessionId ??
+                (parsed.data.creatorOrchestrator === false
+                  ? null
+                  : attachment.sessionId),
+              dashboardUrl,
+              joinPrompt: buildJoinPrompt({
+                slug: attachment.slug,
+                label: persistedLabel,
+              }),
+            }),
+          },
+        ],
+      };
+    },
+  );
+
+  mcp.registerTool(
+    "list_active_spaces",
+    {
+      description:
+        "List active and idle local Talkie Spaces with stable labels for runtime-native selection.",
+      inputSchema: z.any(),
+    },
+    async (): Promise<CallToolResult> => {
+      const dbPath = resolveDbPath(deps);
+      if (!existsSync(dbPath)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ ok: true, spaces: [] }),
+            },
+          ],
+        };
+      }
+      const db = openDatabase(dbPath);
+      try {
+        migrate(db);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ ok: true, spaces: listOversightSpaces(db) }),
+            },
+          ],
+        };
+      } finally {
+        db.close();
+      }
+    },
+  );
+
+  mcp.registerTool(
+    "join_from_prompt",
+    {
+      description:
+        "Join a local Talkie Space from a pasted dashboard join prompt without asking the human to run transport commands.",
+      inputSchema: z.any(),
+    },
+    async (raw: unknown): Promise<CallToolResult> => {
+      const parsed = joinFromPromptInput.safeParse(raw);
+      if (!parsed.success) {
+        return validationError(parsed.error.message);
+      }
+      let slug: string;
+      try {
+        slug = extractSlugFromJoinPrompt(parsed.data.prompt);
+      } catch (error) {
+        return validationError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      if (!promptReferencesActiveSpace(slug)) {
+        return validationError(
+          `Join prompt references a space that is not active locally: ${slug}`,
+        );
+      }
+      const attachment = await ensureAttachment({
+        slug,
+        createIfMissing: true,
+        name: parsed.data.name,
+        runtime: parsed.data.runtime,
+        workspaceLabel: parsed.data.workspaceLabel,
+      });
+      const summary = readOversightSummary(attachment.slug);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              slug: attachment.slug,
+              label: summary?.label ?? labelFromSlug(attachment.slug),
+              spaceId: attachment.spaceId,
+              sessionId: attachment.sessionId,
+              displayName: attachment.displayName,
+            }),
+          },
+        ],
+      };
+    },
+  );
+
   mcp.registerTool(
     "join_space",
     {
@@ -645,7 +1041,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         createIfMissing: true,
         name: parsed.data.name,
         runtime: parsed.data.runtime,
-        workspace: parsed.data.workspace,
+        workspaceLabel: parsed.data.workspaceLabel,
       });
       return {
         content: [
@@ -685,7 +1081,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         }
         if (!hasKnownAttachment(slug)) {
           return validationError(
-            `current Cursor MCP session has not joined space ${slug}`,
+            `current MCP-backed runtime session has not joined space ${slug}`,
           );
         }
         attachment = await ensureAttachment({
@@ -700,7 +1096,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         attachment = await ensureAttachmentBySpaceId(spaceId);
         if (!attachment) {
           return validationError(
-            "current Cursor MCP session has not joined the requested space",
+            "current MCP-backed runtime session has not joined the requested space",
           );
         }
       }
@@ -709,7 +1105,8 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         id: randomUUID(),
         sessionId: attachment.sessionId,
         kind: "conversation",
-        type: "chat.message",
+        type:
+          parsed.data.toSessionId === undefined ? "chat.message" : "chat.direct",
         spaceId: attachment.spaceId,
         payload: { text: parsed.data.text },
         ...(parsed.data.toSessionId !== undefined
@@ -746,7 +1143,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
       const attachment = await ensureAttachmentBySpaceId(parsed.data.spaceId);
       if (!attachment) {
         return validationError(
-          "current Cursor MCP session has not joined the requested space",
+          "current MCP-backed runtime session has not joined the requested space",
         );
       }
       attachment.client.sendEnvelope({
@@ -806,7 +1203,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
       const attachment = await ensureAttachmentBySpaceId(row.spaceId);
       if (!attachment) {
         return validationError(
-          "current Cursor MCP session has not joined the requested space",
+          "current MCP-backed runtime session has not joined the requested space",
         );
       }
       attachment.client.sendEnvelope({
@@ -829,7 +1226,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     "pull_inbox",
     {
       description:
-        "Return pending inbound Talkie envelopes for this Cursor session. Use clear=true to acknowledge the returned items.",
+        "Return pending inbound Talkie envelopes for this MCP-backed runtime session. Use clear=true to acknowledge the returned items.",
       inputSchema: z.any(),
     },
     async (raw: unknown): Promise<CallToolResult> => {
@@ -846,7 +1243,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         }
         if (!hasKnownAttachment(slug)) {
           return validationError(
-            `current Cursor MCP session has not joined space ${slug}`,
+            `current MCP-backed runtime session has not joined space ${slug}`,
           );
         }
         await ensureAttachment({
@@ -854,8 +1251,10 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
           createIfMissing: false,
         });
         parsed.data.slug = slug;
+        syncInboxFromTranscript(slug);
       } else {
         await ensureKnownAttachments();
+        syncInboxFromTranscript();
       }
       const items = pullInbox({
         slug: parsed.data.slug,
@@ -931,11 +1330,12 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     "session-inbox",
     SESSION_INBOX_URI,
     {
-      description: "Pending inbound Talkie envelopes for this Cursor session.",
+      description: "Pending inbound Talkie envelopes for this MCP-backed runtime session.",
       mimeType: "application/json",
     },
     async (): Promise<ReadResourceResult> => {
       await ensureKnownAttachments();
+      syncInboxFromTranscript();
       return {
         contents: [
           {
@@ -959,6 +1359,8 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
       mimeType: "application/json",
     },
     async (): Promise<ReadResourceResult> => {
+      await ensureKnownAttachments();
+      syncInboxFromTranscript();
       const attachments = Object.values(persistedState.attachments);
       return {
         contents: [
@@ -1073,7 +1475,7 @@ function isMainModule(): boolean {
 if (isMainModule()) {
   void runMcpServer().catch((err) => {
     process.stderr.write(
-      `[talkie-cursor-mcp] ${err instanceof Error ? err.message : String(err)}\n`,
+      `[agent-talkie-mcp] ${err instanceof Error ? err.message : String(err)}\n`,
     );
     process.exitCode = 1;
   });
