@@ -436,7 +436,10 @@ export async function runCodexAdapter(opts?: {
   };
 
   const registerNewSession = async (client: TalkieSessionClient): Promise<string> => {
-    const reg = await client.registerSession(sessionInput);
+    const reg = await client.registerSession({
+      ...sessionInput,
+      inboxMode: "live",
+    });
     persistSessionState(sessionStatePath, {
       sessionId: reg.sessionId,
       reconnectSecret: reg.reconnectSecret,
@@ -459,6 +462,7 @@ export async function runCodexAdapter(opts?: {
   let client = await connectClient();
   let registeredSessionId: string;
   let resumedPersistedSession = false;
+  let joinedSlug: string | undefined;
   const persistedSession = loadPersistedSessionState(sessionStatePath);
   if (
     persistedSession &&
@@ -496,6 +500,7 @@ export async function runCodexAdapter(opts?: {
         slug,
         idempotencyKey: randomUUID(),
       });
+      joinedSlug = slug;
     } catch (error) {
       if (!resumedPersistedSession || !isAlreadyInSpaceError(error)) {
         throw error;
@@ -509,6 +514,7 @@ export async function runCodexAdapter(opts?: {
         slug,
         idempotencyKey: randomUUID(),
       });
+      joinedSlug = slug;
     }
   } else {
     const fallbackSpaceId = process.env.TALKIE_CODEX_SPACE_ID?.trim();
@@ -522,6 +528,38 @@ export async function runCodexAdapter(opts?: {
   const cmd = process.env.TALKIE_CODEX_COMMAND ?? "codex";
   const activeTurns = new Map<string, TurnRun>();
   let shuttingDown = false;
+  let resolveLifecycleStop: (() => void) | undefined;
+  const lifecycleStop = new Promise<void>((resolve) => {
+    resolveLifecycleStop = resolve;
+  });
+
+  const requestLifecycleStop = (reason: string): void => {
+    if (shuttingDown) {
+      return;
+    }
+    process.stderr.write(`[adapter-codex] stopping sidecar: ${reason}\n`);
+    resolveLifecycleStop?.();
+  };
+
+  client.onRelayMessage((message: unknown) => {
+    if (!isRecord(message) || typeof message.type !== "string") {
+      return;
+    }
+    if (
+      (message.type === "space.archived" || message.type === "space.destroyed") &&
+      joinedSlug !== undefined &&
+      message.slug === joinedSlug
+    ) {
+      requestLifecycleStop(`${message.type} ${joinedSlug}`);
+      return;
+    }
+    if (
+      message.type === "membership.removed" &&
+      message.targetSessionId === registeredSessionId
+    ) {
+      requestLifecycleStop("membership.removed");
+    }
+  });
 
   const startTurn = (envelope: Envelope): void => {
     if (!shouldHandleConversation(envelope, registeredSessionId)) {
@@ -660,7 +698,7 @@ export async function runCodexAdapter(opts?: {
   opts?.onReady?.({ sessionId: registeredSessionId });
 
   try {
-    await waitForAbort(opts?.signal);
+    await Promise.race([waitForAbort(opts?.signal), lifecycleStop]);
   } finally {
     shuttingDown = true;
     for (const turn of activeTurns.values()) {

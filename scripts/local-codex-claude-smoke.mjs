@@ -134,7 +134,7 @@ try {
   process.env.AGENT_TALKIE_DATA_DIR = dataDir;
   process.env.AGENT_TALKIE_RELAY_PORT = "0";
   process.env.TALKIE_CODEX_DISPLAY_NAME = "codex-smoke";
-  process.env.TALKIE_CODEX_RUNTIME = "adapter-codex";
+  process.env.TALKIE_CODEX_RUNTIME = "codex-cli";
   process.env.TALKIE_CODEX_WORKSPACE_LABEL = repoRoot;
 
   relay = await ensureRelayRunning({});
@@ -233,7 +233,7 @@ try {
   const summary = await waitFor(async () => {
     const next = await getSpaceSummary(relay.port);
     const runtimes = new Set(next.members?.map((m) => m.runtime));
-    return runtimes.has("adapter-codex") &&
+    return runtimes.has("codex-cli") &&
       runtimes.has("claude-code") &&
       next.orchestratorSessionId === claudeSessionId
       ? next
@@ -242,7 +242,7 @@ try {
 
   const codexMember = summary.members.find(
     (m) =>
-      m.sessionId === codexReadyState.sessionId && m.runtime === "adapter-codex",
+      m.sessionId === codexReadyState.sessionId && m.runtime === "codex-cli",
   );
   const claudeMember = summary.members.find(
     (m) => m.sessionId === claudeSessionId && m.runtime === "claude-code",

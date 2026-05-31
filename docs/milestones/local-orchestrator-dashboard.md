@@ -46,6 +46,7 @@ When the user opens the dashboard for an active local space:
 - The participant panel shows runtime sessions with stable human labels, role, runtime, workspace label, availability, last activity, and any blocked reason.
 - Selecting a participant opens a private intervention surface, not a second generic transcript dump.
 - Sending to an unavailable target is blocked or explicitly marked as queued/manual-pull, never silently accepted as if it were live.
+- A Codex CLI live sidecar appears as available/ready when connected; a Codex App or fallback Codex pull session appears as manual pull unless a real live app hook is verified.
 - Raw envelopes and relay diagnostics are available behind an explicit debug affordance.
 
 The user should not have to know envelope fields, relay sequence numbers, session IDs, or low-level routing rules to decide what to do next.
@@ -93,7 +94,7 @@ Out of scope:
 This milestone passes only when the main thread verifies all of the following:
 
 1. Opening the dashboard for an active local space shows the current space, orchestrator, connection state, and participant availability without requiring protocol knowledge.
-2. A dashboard default message is routed to the active orchestrator, the runtime receives it, the runtime produces a response or status update, and the dashboard observes that result.
+2. A dashboard default message is routed to the active orchestrator, the runtime receives it, the runtime produces a response or status update, and the dashboard observes that result. For Codex CLI this must use the live sidecar path, not manual `talkie pull`.
 3. A private intervention to a selected participant is delivered to that participant, or the UI blocks the send with a clear unavailable/manual-pull state.
 4. No-orchestrator, stale-orchestrator, target-offline, and relay-disconnected states are visible and cannot be mistaken for healthy live chat.
 5. Reloading the dashboard recovers the browser session without creating duplicate active human participants.
