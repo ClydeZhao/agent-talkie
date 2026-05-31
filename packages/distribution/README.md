@@ -17,7 +17,7 @@ node packages/distribution/bin/agent-talkie.js --yes --local --codex --claude --
 
 The installer can configure:
 
-- one-machine collaboration across Codex CLI and Claude Code, with Cursor App support remaining available for MCP-backed development
+- one-machine collaboration across Codex CLI, pull-based Codex App sessions, and Claude Code, with Cursor App support remaining available for MCP-backed development
 - runtime-facing Talkie skills installed with the product
 - Cursor MCP configuration installed or updated by the installer
 - Claude Code project MCP configuration installed or updated by the installer

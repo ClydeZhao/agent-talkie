@@ -125,6 +125,7 @@ async function resumeOrRegister(args: {
     displayName: args.name,
     runtime: args.runtime,
     workspaceLabel: args.workspaceLabel,
+    inboxMode: "pull",
     isHuman: false,
   });
   const record: CliSessionRecord = {
@@ -351,6 +352,20 @@ function parseTranscriptEnvelope(row: {
   }
 }
 
+function conversationDeliveryTarget(envelope: Envelope): string | undefined {
+  if (envelope.kind !== "conversation") {
+    return undefined;
+  }
+  return envelope.to ?? envelope.effectiveTo;
+}
+
+function isPullableConversationEnvelope(envelope: Envelope): boolean {
+  return (
+    envelope.kind === "conversation" &&
+    (envelope.type === "chat.message" || envelope.type === "chat.direct")
+  );
+}
+
 function resolveRecipient(slug: string, to: string | undefined): string | undefined {
   if (!to) {
     return undefined;
@@ -476,12 +491,18 @@ export async function runCreateSpaceCommand(opts: {
 }
 
 export async function runListActiveSpacesCommand(): Promise<void> {
-  const db = openRelayDatabase();
-  try {
-    console.log(JSON.stringify({ ok: true, spaces: listOversightSpaces(db) }));
-  } finally {
-    db.close();
+  const relay = await ensureRelayRunning({});
+  const res = await fetch(
+    `http://127.0.0.1:${relay.port}/__agent-talkie/v1/oversight/spaces`,
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to list active spaces: HTTP ${res.status}`);
   }
+  const spaces = (await res.json()) as unknown;
+  if (!Array.isArray(spaces)) {
+    throw new Error("Failed to list active spaces: invalid relay response");
+  }
+  console.log(JSON.stringify({ ok: true, spaces }));
 }
 
 export async function runJoinFromPromptCommand(opts: {
@@ -562,14 +583,14 @@ export async function runPullCommand(opts: {
       .filter((item): item is NonNullable<typeof item> => item !== undefined)
       .filter((item) => item.relaySeq > lastSeen)
       .filter((item) => item.envelope.sessionId !== record.sessionId)
+      .filter((item) => isPullableConversationEnvelope(item.envelope))
       .filter(
-        (item) =>
-          item.envelope.kind === "conversation" &&
-          item.envelope.type === "chat.message",
-      )
-      .filter(
-        (item) =>
-          item.envelope.to === undefined || item.envelope.to === record.sessionId,
+        (item) => {
+          const deliveryTarget = conversationDeliveryTarget(item.envelope);
+          return (
+            deliveryTarget === undefined || deliveryTarget === record.sessionId
+          );
+        },
       )
       .slice(0, opts.limit);
 

@@ -77,6 +77,56 @@ function hasSkillFrontmatter(path: string): boolean {
   return /^---\r?\n[\s\S]*?\r?\n---(\r?\n|$)/.test(content);
 }
 
+function checkCodexPullFlow(opts: {
+  path: string;
+  runtime: "codex-cli" | "codex-app";
+  skipped: boolean;
+  skillExists: boolean;
+  hasFrontmatter: boolean;
+}): DoctorCheck {
+  if (opts.skipped) {
+    return {
+      ok: true,
+      path: opts.path,
+      runtime: opts.runtime,
+      mode: "pull",
+      status: "skipped",
+    };
+  }
+  if (!opts.skillExists) {
+    return {
+      ok: false,
+      path: opts.path,
+      runtime: opts.runtime,
+      mode: "pull",
+      status: "missing",
+    };
+  }
+  if (!opts.hasFrontmatter) {
+    return {
+      ok: false,
+      path: opts.path,
+      runtime: opts.runtime,
+      mode: "pull",
+      status: "invalid_frontmatter",
+    };
+  }
+  const content = readFileSync(opts.path, "utf8");
+  const hasRuntimeInstruction = content.includes(opts.runtime);
+  const hasPullInstruction =
+    /\bpull-based\b/i.test(content) || /\btalkie pull\b/i.test(content);
+  return {
+    ok: hasRuntimeInstruction && hasPullInstruction,
+    path: opts.path,
+    runtime: opts.runtime,
+    mode: "pull",
+    status:
+      hasRuntimeInstruction && hasPullInstruction
+        ? "configured"
+        : "missing_pull_flow_instructions",
+  };
+}
+
 function handleError(err: unknown): void {
   console.error(err);
   process.exitCode = 1;
@@ -98,7 +148,22 @@ function isExecutablePath(path: string): boolean {
   }
 }
 
-function resolveDoctorRuntimeSelection(projectRoot: string): DoctorRuntimeSelection {
+function resolveDoctorRuntimeSelection(
+  projectRoot: string,
+  explicitSelection?: Partial<DoctorRuntimeSelection>,
+): DoctorRuntimeSelection {
+  if (
+    explicitSelection?.codex === true ||
+    explicitSelection?.cursor === true ||
+    explicitSelection?.claude === true
+  ) {
+    return {
+      codex: explicitSelection.codex === true,
+      cursor: explicitSelection.cursor === true,
+      claude: explicitSelection.claude === true,
+    };
+  }
+
   const manifestPath = join(projectRoot, ".agent-talkie", "install-manifest.json");
   if (!existsSync(manifestPath)) {
     return { codex: true, cursor: true, claude: true };
@@ -125,10 +190,17 @@ function resolveDoctorRuntimeSelection(projectRoot: string): DoctorRuntimeSelect
 async function runDoctor(opts: {
   projectRoot?: string;
   startRelay?: boolean;
+  codex?: boolean;
+  cursor?: boolean;
+  claude?: boolean;
 }): Promise<void> {
   const projectRoot = opts.projectRoot ?? process.cwd();
   const checks: Record<string, DoctorCheck> = {};
-  const runtimeSelection = resolveDoctorRuntimeSelection(projectRoot);
+  const runtimeSelection = resolveDoctorRuntimeSelection(projectRoot, {
+    codex: opts.codex,
+    cursor: opts.cursor,
+    claude: opts.claude,
+  });
 
   let relayPort: number | undefined;
   let relayGeneration: string | undefined;
@@ -205,16 +277,45 @@ async function runDoctor(opts: {
   const codexSkillPath = join(projectRoot, ".codex", "skills", "talkie-space", "SKILL.md");
   if (!runtimeSelection.codex) {
     checks.codexSkillTemplate = { ok: true, path: codexSkillPath, status: "skipped" };
+    checks.codexCliPullFlow = checkCodexPullFlow({
+      path: codexSkillPath,
+      runtime: "codex-cli",
+      skipped: true,
+      skillExists: false,
+      hasFrontmatter: false,
+    });
+    checks.codexAppPullFlow = checkCodexPullFlow({
+      path: codexSkillPath,
+      runtime: "codex-app",
+      skipped: true,
+      skillExists: false,
+      hasFrontmatter: false,
+    });
   } else {
     const codexSkillExists = existsSync(codexSkillPath);
+    const codexSkillHasFrontmatter = hasSkillFrontmatter(codexSkillPath);
     checks.codexSkillTemplate = {
-      ok: codexSkillExists && hasSkillFrontmatter(codexSkillPath),
+      ok: codexSkillExists && codexSkillHasFrontmatter,
       path: codexSkillPath,
       status: codexSkillExists ? "configured" : "missing",
     };
     if (codexSkillExists && !checks.codexSkillTemplate.ok) {
       checks.codexSkillTemplate.status = "invalid_frontmatter";
     }
+    checks.codexCliPullFlow = checkCodexPullFlow({
+      path: codexSkillPath,
+      runtime: "codex-cli",
+      skipped: false,
+      skillExists: codexSkillExists,
+      hasFrontmatter: codexSkillHasFrontmatter,
+    });
+    checks.codexAppPullFlow = checkCodexPullFlow({
+      path: codexSkillPath,
+      runtime: "codex-app",
+      skipped: false,
+      skillExists: codexSkillExists,
+      hasFrontmatter: codexSkillHasFrontmatter,
+    });
   }
 
   const cursorSkillPath = join(projectRoot, ".cursor", "skills", "talkie-space", "SKILL.md");
@@ -426,8 +527,17 @@ program
   .description("Check local Agent Talkie relay, dashboard, CLI, skills, and runtime MCP setup")
   .option("--workspace", "Alias for checking the current project/config root")
   .option("--project-root <path>", "project/config root to inspect", process.cwd())
+  .option("--codex", "Check Codex CLI/Codex App skill support")
+  .option("--cursor", "Check Cursor skill and MCP support")
+  .option("--claude", "Check Claude Code skill and MCP support")
   .option("--no-start-relay", "Do not start the relay while checking setup")
-  .action(async (opts: { projectRoot?: string; startRelay?: boolean }) => {
+  .action(async (opts: {
+    projectRoot?: string;
+    startRelay?: boolean;
+    codex?: boolean;
+    cursor?: boolean;
+    claude?: boolean;
+  }) => {
     try {
       await runDoctor(opts);
     } catch (e) {

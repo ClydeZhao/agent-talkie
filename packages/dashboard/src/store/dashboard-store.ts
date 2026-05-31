@@ -30,6 +30,7 @@ export type OversightMemberSnapshot = {
   blockedReason: string | null;
   runtime: string;
   workspaceLabel: string;
+  inboxMode?: "live" | "pull";
   presenceState?: "online" | "offline" | "stale";
   lastSeenAtMs?: number | null;
 };
@@ -53,6 +54,12 @@ export type SpaceListRow = {
   memberCount: number;
   ownerSessionId: string | null;
   orchestratorSessionId: string | null;
+  actionability?: {
+    state: "ready" | "manual-pull" | "blocked";
+    reason: string;
+    label: string;
+    detail: string;
+  };
 };
 
 export type RosterRow = {
@@ -61,6 +68,7 @@ export type RosterRow = {
   isHuman: boolean;
   runtime: string;
   workspaceLabel: string;
+  inboxMode: "live" | "pull";
   orchestrator: boolean;
   owner: boolean;
   role: string;
@@ -74,6 +82,7 @@ export type RosterRow = {
 export type ParticipantAvailabilityKind =
   | "available"
   | "blocked"
+  | "manual-pull"
   | "stale"
   | "offline"
   | "unavailable";
@@ -94,6 +103,7 @@ export type DiscussionTargetStatus =
   | "ready"
   | "missing-orchestrator"
   | "target-missing"
+  | "target-manual-pull"
   | "target-stale"
   | "target-offline"
   | "target-unavailable";
@@ -123,6 +133,16 @@ export type DashboardConsoleProjection = {
 
 const GENERIC_HUMAN_DISPLAY_NAME_RE = /^human(?:[-_ ]?\d+)?$/i;
 const GENERIC_DASHBOARD_DISPLAY_NAME_RE = /^dashboard(?:[-_ ]?\d+)?$/i;
+function isPullMode(inboxMode: string): boolean {
+  return inboxMode === "pull";
+}
+
+function conversationDeliveryTarget(envelope: Envelope): string | undefined {
+  if (envelope.kind !== "conversation") {
+    return undefined;
+  }
+  return envelope.to ?? envelope.effectiveTo;
+}
 
 function displayNameForRosterMember(
   member: OversightMemberSnapshot,
@@ -318,8 +338,20 @@ export class DashboardStore {
 
   getVisibleDiscussionLines(): TranscriptLine[] {
     return this.getVisibleTranscriptLines().filter(
-      (line) => line.envelope.kind === "conversation",
+      (line) =>
+        line.envelope.kind === "conversation" &&
+        this.lineMatchesActiveDiscussion(line),
     );
+  }
+
+  getActiveDiscussionTitle(): string {
+    if (this.sendTargetSessionId === null) {
+      return "Human ↔ Orchestrator Discussion";
+    }
+    const row = this.roster.get(this.sendTargetSessionId);
+    const label =
+      row?.displayName ?? `${this.sendTargetSessionId.slice(0, 8)}...`;
+    return `Private chat with ${label}`;
   }
 
   getDiagnosticsTranscriptLines(): TranscriptLine[] {
@@ -348,6 +380,39 @@ export class DashboardStore {
     const now = Date.now();
     const windowMs = tf.preset === "5m" ? 5 * 60 * 1000 : 30 * 60 * 1000;
     return line.receivedAtMs >= now - windowMs;
+  }
+
+  private lineMatchesActiveDiscussion(line: TranscriptLine): boolean {
+    const env = line.envelope;
+    if (env.kind !== "conversation") {
+      return false;
+    }
+    const selfId = this.selfSessionId;
+    if (selfId === null) {
+      return true;
+    }
+    const target = conversationDeliveryTarget(env);
+    if (this.sendTargetSessionId !== null) {
+      const selected = this.sendTargetSessionId;
+      return (
+        (env.sessionId === selfId && target === selected) ||
+        (env.sessionId === selected && target === selfId)
+      );
+    }
+
+    const orchestratorId = Array.from(this.roster.values()).find(
+      (row) => row.orchestrator,
+    )?.sessionId;
+    if (orchestratorId === undefined) {
+      return false;
+    }
+    if (env.sessionId === selfId) {
+      return target === undefined || target === orchestratorId;
+    }
+    if (env.sessionId === orchestratorId) {
+      return target === undefined || target === selfId;
+    }
+    return false;
   }
 
   setActiveSpaceId(id: string): void {
@@ -558,6 +623,17 @@ export class DashboardStore {
             : "Cannot send until this participant is reachable.",
       };
     }
+    if (row.availability.kind === "manual-pull") {
+      return {
+        ...base,
+        status: "target-manual-pull",
+        canSend: true,
+        reason:
+          mode === "orchestrator"
+            ? "This pull-based orchestrator will receive the message on its next manual pull."
+            : "This pull-based participant will receive the message on its next manual pull.",
+      };
+    }
     if (row.availability.kind === "offline") {
       return {
         ...base,
@@ -603,6 +679,16 @@ export class DashboardStore {
       };
     }
     if (row.presenceState === "stale") {
+      if (isPullMode(row.inboxMode)) {
+        return {
+          kind: "manual-pull",
+          label: "Manual pull",
+          detail:
+            "This pull-based runtime is not connected; messages are queued until it runs pull.",
+          canReceiveLive: false,
+          canReceivePrivateIntervention: true,
+        };
+      }
       return {
         kind: "stale",
         label: "Stale",
@@ -612,6 +698,16 @@ export class DashboardStore {
       };
     }
     if (row.presenceState === "offline") {
+      if (isPullMode(row.inboxMode)) {
+        return {
+          kind: "manual-pull",
+          label: "Manual pull",
+          detail:
+            "This pull-based runtime is not connected; messages are queued until it runs pull.",
+          canReceiveLive: false,
+          canReceivePrivateIntervention: true,
+        };
+      }
       return {
         kind: "offline",
         label: "Offline",
@@ -720,10 +816,7 @@ export class DashboardStore {
       return;
     }
     const data = parsed.data;
-    const targetSessionId =
-      data.namespace === "profile" && data.targetSessionId !== undefined
-        ? data.targetSessionId
-        : envelope.sessionId;
+    const targetSessionId = data.targetSessionId ?? envelope.sessionId;
     if (targetSessionId === undefined || targetSessionId === "") {
       return;
     }
@@ -766,6 +859,7 @@ export class DashboardStore {
         focus: "",
         progress: "idle",
         blockedReason: "",
+        inboxMode: "live",
         presenceState: "offline",
         lastSeenAtMs: null,
       };
@@ -839,6 +933,7 @@ export class DashboardStore {
         isHuman: m.isHuman,
         runtime: m.runtime,
         workspaceLabel: m.workspaceLabel,
+        inboxMode: m.inboxMode ?? "live",
         orchestrator: orch !== null && sid === orch,
         owner: owner !== null && sid === owner,
         role: m.role,

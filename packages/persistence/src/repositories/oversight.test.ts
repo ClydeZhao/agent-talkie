@@ -35,6 +35,7 @@ describe("oversight repository", () => {
       displayName: "Bob",
       runtime: "r2",
       workspaceLabel: "w",
+      inboxMode: "pull",
       isHuman: false,
     });
     const { id: spaceId } = insertSpaceWithSlug(db, {
@@ -63,12 +64,14 @@ describe("oversight repository", () => {
     for (const m of [alice!, bob!]) {
       expect(m).toHaveProperty("runtime");
       expect(m).toHaveProperty("workspaceLabel");
+      expect(m).toHaveProperty("inboxMode");
       expect(m).toHaveProperty("lastSeenAtMs");
     }
     expect(alice!.runtime).toBe("r1");
     expect(alice!.workspaceLabel).toBe("w");
     expect(bob!.runtime).toBe("r2");
     expect(bob!.workspaceLabel).toBe("w");
+    expect(bob!.inboxMode).toBe("pull");
   });
 
   it("getOversightSpaceSummaryBySlug uses collaboration last activity as lastSeenAtMs", () => {

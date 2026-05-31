@@ -43,11 +43,16 @@ async function registerFreshDashboardSession(
 async function joinSpace(
   bridge: DashboardSessionStartupBridge,
   slug: string,
+  label?: string,
 ): Promise<{ spaceId: string; slug: string }> {
-  return bridge.joinSpace({
+  const args: Parameters<DashboardSessionStartupBridge["joinSpace"]>[0] = {
     slug,
     idempotencyKey: crypto.randomUUID(),
-  });
+  };
+  if (label !== undefined && label.trim().length > 0) {
+    args.label = label.trim();
+  }
+  return bridge.joinSpace(args);
 }
 
 function isRecoverableStoredSessionJoinError(error: unknown): boolean {
@@ -71,6 +76,7 @@ function isRecoverableStoredSessionJoinError(error: unknown): boolean {
 export async function connectJoinDashboardSession(
   bridge: DashboardSessionStartupBridge,
   slug: string,
+  label?: string,
 ): Promise<DashboardSessionStartupResult> {
   await bridge.connect({ autoReconnect: true });
 
@@ -81,7 +87,7 @@ export async function connectJoinDashboardSession(
       : resumed.sessionId;
 
   try {
-    const joined = await joinSpace(bridge, slug);
+    const joined = await joinSpace(bridge, slug, label);
     return {
       selfSessionId,
       spaceId: joined.spaceId,
@@ -104,7 +110,7 @@ export async function connectJoinDashboardSession(
   const freshSessionId = await registerFreshDashboardSession(bridge);
   let joined: { spaceId: string; slug: string };
   try {
-    joined = await joinSpace(bridge, slug);
+    joined = await joinSpace(bridge, slug, label);
   } catch (error) {
     bridge.close();
     throw error;

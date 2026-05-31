@@ -38,6 +38,18 @@ describe("connectJoinDashboardSession", () => {
     );
   });
 
+  it("passes a generated space label through the dashboard join", async () => {
+    const bridge = makeBridge({});
+
+    await connectJoinDashboardSession(bridge, "room-a", "Visible Room");
+
+    expect(bridge.joinSpace).toHaveBeenCalledWith({
+      slug: "room-a",
+      label: "Visible Room",
+      idempotencyKey: expect.any(String),
+    });
+  });
+
   it("recovers from a stale stored dashboard session by clearing credentials and retrying with a fresh session", async () => {
     const joinSpace = vi
       .fn()

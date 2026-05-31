@@ -87,6 +87,24 @@ export type RelayDispatchContext = RelayWsContext & {
   destroyedSlugs: Map<string, number>;
 };
 
+type SpaceActionability = {
+  state: "ready" | "manual-pull" | "blocked";
+  reason:
+    | "ready"
+    | "orchestrator_manual_pull"
+    | "empty_space"
+    | "no_orchestrator"
+    | "orchestrator_missing"
+    | "orchestrator_offline"
+    | "orchestrator_stale";
+  label: string;
+  detail: string;
+};
+
+function isPullMode(inboxMode: string | undefined): boolean {
+  return inboxMode === "pull";
+}
+
 export function dispatchValidatedEnvelope(
   ctx: RelayDispatchContext,
   envelope: Envelope,
@@ -468,6 +486,84 @@ export async function createRelayServer(opts: {
     });
   };
 
+  const classifySpaceActionability = (
+    slug: string,
+    onlineIds: ReadonlySet<string>,
+    nowMs: number,
+  ): SpaceActionability => {
+    const summary = getOversightSpaceSummaryBySlug(db, slug);
+    if (summary === undefined || summary.memberCount === 0) {
+      return {
+        state: "blocked",
+        reason: "empty_space",
+        label: "No active members",
+        detail: "No active participant can receive messages in this space.",
+      };
+    }
+    if (summary.orchestratorSessionId === null) {
+      return {
+        state: "blocked",
+        reason: "no_orchestrator",
+        label: "No orchestrator",
+        detail: "Default dashboard messages need an orchestrator target.",
+      };
+    }
+    const orchestrator = summary.members.find(
+      (member) => member.sessionId === summary.orchestratorSessionId,
+    );
+    if (orchestrator === undefined) {
+      return {
+        state: "blocked",
+        reason: "orchestrator_missing",
+        label: "Orchestrator missing",
+        detail: "The selected orchestrator is not an active member.",
+      };
+    }
+    if (onlineIds.has(orchestrator.sessionId)) {
+      return {
+        state: "ready",
+        reason: "ready",
+        label: "Ready",
+        detail: "The orchestrator is online.",
+      };
+    }
+    if (
+      orchestrator.lastSeenAtMs !== null &&
+      nowMs - orchestrator.lastSeenAtMs > presenceStaleAfterMs
+    ) {
+      if (isPullMode(orchestrator.inboxMode)) {
+        return {
+          state: "manual-pull",
+          reason: "orchestrator_manual_pull",
+          label: "Manual pull",
+          detail:
+            "The orchestrator is pull-based and will receive messages on its next pull.",
+        };
+      }
+      return {
+        state: "blocked",
+        reason: "orchestrator_stale",
+        label: "Orchestrator stale",
+        detail: "The orchestrator has not checked in recently.",
+      };
+    }
+    if (isPullMode(orchestrator.inboxMode)) {
+      return {
+        state: "manual-pull",
+        reason: "orchestrator_manual_pull",
+        label: "Manual pull",
+        detail:
+          "The orchestrator is pull-based and will receive messages on its next pull.",
+      };
+    }
+    return {
+      state: "blocked",
+      reason: "orchestrator_offline",
+      label: "Orchestrator offline",
+      detail: "The orchestrator is not currently connected.",
+    };
+  };
+
   const spawnReplacementRelay = (): void => {
     if (!restartSupported || boundPort === undefined) {
       return;
@@ -695,8 +791,14 @@ export async function createRelayServer(opts: {
       url.pathname === "/__agent-talkie/v1/oversight/spaces"
     ) {
       pruneStaleMemberships();
+      const onlineIds = onlineSessionIds();
+      const now = Date.now();
+      const rows = listOversightSpaces(db).map((row) => ({
+        ...row,
+        actionability: classifySpaceActionability(row.slug, onlineIds, now),
+      }));
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(listOversightSpaces(db)));
+      res.end(JSON.stringify(rows));
       return;
     }
 

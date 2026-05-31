@@ -89,6 +89,10 @@ function makeClient(args?: {
 
 describe("createMcpServer", () => {
   const registeredToolNames: string[] = [];
+  const toolConfigs = new Map<
+    string,
+    Parameters<McpServer["registerTool"]>[1]
+  >();
   const toolHandlers = new Map<
     string,
     Parameters<McpServer["registerTool"]>[2]
@@ -103,6 +107,7 @@ describe("createMcpServer", () => {
 
   beforeEach(() => {
     registeredToolNames.length = 0;
+    toolConfigs.clear();
     toolHandlers.clear();
     resourceHandlers.clear();
     dataDir = mkdtempSync(join(tmpdir(), "talkie-cursor-mcp-"));
@@ -116,6 +121,7 @@ describe("createMcpServer", () => {
       cb: Parameters<McpServer["registerTool"]>[2],
     ) {
       registeredToolNames.push(name);
+      toolConfigs.set(name, config);
       toolHandlers.set(name, cb);
       return originalRegisterTool.call(this, name, config, cb);
     });
@@ -161,6 +167,20 @@ describe("createMcpServer", () => {
     expect(registeredToolNames).toContain("assign_orchestrator");
     expect(registeredToolNames).toContain("update_metadata");
     expect(registeredToolNames).toContain("pull_inbox");
+  });
+
+  it("exposes pull_inbox parameters in the MCP tool schema", () => {
+    createMcpServer({
+      client: makeClient() as never,
+      ensureRelay: async () => ({ port: 18765, generation: "g", pid: 1, spawned: false }),
+    });
+
+    const inputSchema = toolConfigs.get("pull_inbox")?.inputSchema;
+    expect(inputSchema).toMatchObject({
+      slug: expect.any(Object),
+      clear: expect.any(Object),
+      limit: expect.any(Object),
+    });
   });
 
   it("does not auto-join from TALKIE_MCP_JOIN_SLUG", async () => {
@@ -238,56 +258,87 @@ describe("createMcpServer", () => {
     });
   });
 
-  it("list_active_spaces exposes product labels and hides archived spaces", async () => {
-    const dbPath = join(dataDir, "relay.sqlite");
-    const db = openDatabase(dbPath);
-    migrate(db);
-    const now = Date.now();
-    const { id: alphaId } = insertSpaceWithSlug(db, {
-      slug: "alpha-room",
-      label: "Alpha Room",
-      nowMs: now,
-    });
-    const { id: archivedId } = insertSpaceWithSlug(db, {
-      slug: "archived-room",
-      label: "Archived Room",
-      nowMs: now,
-    });
-    const { id: memberId } = createSession(db, {
-      displayName: "codex-lead",
-      runtime: "codex-cli",
-      workspaceLabel: "repo",
-      isHuman: false,
-    });
-    insertMembership(db, { spaceId: alphaId, sessionId: memberId, nowMs: now });
-    db.prepare(`UPDATE spaces SET status = 'archived' WHERE id = ?`).run(
-      archivedId,
-    );
-    db.close();
+  it("list_active_spaces exposes the relay product list with actionability", async () => {
+    const ensureRelay = vi.fn(async () => ({
+      port: 18765,
+      generation: "g",
+      pid: 1,
+      spawned: false,
+    }));
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          slug: "alpha-room",
+          label: "Alpha Room",
+          status: "active",
+          memberCount: 1,
+          actionability: {
+            state: "manual-pull",
+            reason: "orchestrator_manual_pull",
+            label: "Manual pull",
+            detail: "The orchestrator is pull-based and will receive messages on its next pull.",
+          },
+        },
+        {
+          slug: "blocked-room",
+          label: "Blocked Room",
+          status: "active",
+          memberCount: 1,
+          actionability: {
+            state: "blocked",
+            reason: "no_orchestrator",
+            label: "No orchestrator",
+            detail: "Default dashboard messages need an orchestrator target.",
+          },
+        },
+      ],
+    } as Response);
 
     createMcpServer({
-      dbPath,
       client: makeClient() as never,
-      ensureRelay: async () => ({ port: 18765, generation: "g", pid: 1, spawned: false }),
+      ensureRelay,
     });
 
     const result = await toolHandlers.get("list_active_spaces")!({}, {} as never);
     const payload = JSON.parse(result.content[0]?.text ?? "{}") as {
       ok: boolean;
-      spaces: Array<{ slug: string; label: string; status: string; memberCount: number }>;
+      spaces: Array<{
+        slug: string;
+        label: string;
+        status: string;
+        memberCount: number;
+        actionability?: { state: string; reason: string; label: string };
+      }>;
     };
 
     expect(payload).toMatchObject({ ok: true });
+    expect(ensureRelay).toHaveBeenCalledWith({});
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:18765/__agent-talkie/v1/oversight/spaces",
+    );
     expect(payload.spaces).toContainEqual(
       expect.objectContaining({
         slug: "alpha-room",
         label: "Alpha Room",
         status: "active",
         memberCount: 1,
+        actionability: expect.objectContaining({
+          state: "manual-pull",
+          reason: "orchestrator_manual_pull",
+          label: "Manual pull",
+        }),
       }),
     );
-    expect(payload.spaces).not.toContainEqual(
-      expect.objectContaining({ slug: "archived-room" }),
+    expect(payload.spaces).toContainEqual(
+      expect.objectContaining({
+        slug: "blocked-room",
+        actionability: expect.objectContaining({
+          state: "blocked",
+          reason: "no_orchestrator",
+          label: "No orchestrator",
+        }),
+      }),
     );
   });
 
@@ -628,6 +679,7 @@ describe("createMcpServer", () => {
       expect.objectContaining({
         displayName: "claude-code",
         runtime: "claude-code",
+        inboxMode: "pull",
         isHuman: false,
       }),
     );

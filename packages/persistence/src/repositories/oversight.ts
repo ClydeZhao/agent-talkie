@@ -12,6 +12,7 @@ export type OversightMember = {
   blockedReason: string | null;
   runtime: string;
   workspaceLabel: string;
+  inboxMode: "live" | "pull";
   lastSeenAtMs: number | null;
 };
 
@@ -98,6 +99,7 @@ export function getOversightSpaceSummaryBySlug(
               sess.is_human AS is_human,
               sess.runtime AS runtime,
               sess.workspace_label AS workspace_label,
+              sess.inbox_mode AS inbox_mode,
               COALESCE(cp.role, '') AS role,
               COALESCE(cp.focus, '') AS focus,
               COALESCE(cs.progress, 'idle') AS progress,
@@ -118,6 +120,7 @@ export function getOversightSpaceSummaryBySlug(
       is_human: number;
       runtime: string;
       workspace_label: string;
+      inbox_mode: "live" | "pull";
       role: string;
       focus: string;
       progress: string;
@@ -143,6 +146,7 @@ export function getOversightSpaceSummaryBySlug(
       blockedReason: r.blocked_reason,
       runtime: r.runtime,
       workspaceLabel: r.workspace_label,
+      inboxMode: r.inbox_mode,
       lastSeenAtMs: r.last_seen_at_ms,
     })),
   };

@@ -89,6 +89,44 @@ it("renders last activity time for roster rows", async () => {
   document.body.removeChild(el);
 });
 
+it("selects a participant for private intervention when the row is clicked", async () => {
+  const el = document.createElement("talkie-roster-entry");
+  const row = blockedRow("");
+  row.sessionId = "worker-session";
+  row.displayName = "Worker";
+  (el as any).row = row;
+  const selected = new Promise<string>((resolve) => {
+    el.addEventListener("talkie-select-send-target", (ev) => {
+      resolve((ev as CustomEvent<{ sessionId: string }>).detail.sessionId);
+    });
+  });
+  document.body.appendChild(el);
+  await (el as any).updateComplete;
+
+  el.shadowRoot
+    ?.querySelector<HTMLElement>(".row-main")
+    ?.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+
+  await expect(selected).resolves.toBe("worker-session");
+  document.body.removeChild(el);
+});
+
+it("uses a native button for the participant private intervention target", async () => {
+  const el = document.createElement("talkie-roster-entry");
+  const row = blockedRow("");
+  row.sessionId = "worker-session";
+  row.displayName = "Worker";
+  (el as any).row = row;
+  document.body.appendChild(el);
+  await (el as any).updateComplete;
+
+  const target = el.shadowRoot?.querySelector(".row-main");
+  expect(target?.tagName).toBe("BUTTON");
+  expect(target?.getAttribute("type")).toBe("button");
+
+  document.body.removeChild(el);
+});
+
 it("labels stale owner cleanup action explicitly", async () => {
   const el = document.createElement("talkie-roster-entry");
   const row = blockedRow("");
@@ -102,5 +140,28 @@ it("labels stale owner cleanup action explicitly", async () => {
 
   expect(el.shadowRoot?.textContent).toContain("Clear stale participant");
 
+  document.body.removeChild(el);
+});
+
+it("dispatches metadata edit from the owner menu", async () => {
+  const el = document.createElement("talkie-roster-entry");
+  const row = blockedRow("");
+  row.sessionId = "worker-session";
+  (el as any).row = row;
+  (el as any).selfIsOwner = true;
+  (el as any).selfSessionId = "owner";
+  const edited = new Promise<string>((resolve) => {
+    el.addEventListener("talkie-metadata-edit", (ev) => {
+      resolve((ev as CustomEvent<{ sessionId: string }>).detail.sessionId);
+    });
+  });
+  document.body.appendChild(el);
+  await (el as any).updateComplete;
+
+  el.shadowRoot
+    ?.querySelector<HTMLButtonElement>("button.metadata-edit")
+    ?.click();
+
+  await expect(edited).resolves.toBe("worker-session");
   document.body.removeChild(el);
 });

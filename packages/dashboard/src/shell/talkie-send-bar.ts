@@ -179,6 +179,9 @@ export class TalkieSendBar extends LitElement {
     if (target.status === "target-stale") {
       return `${targetKind} is stale. ${target.reason}`;
     }
+    if (target.status === "target-manual-pull") {
+      return `${target.targetLabel} uses manual pull. ${target.reason}`;
+    }
     if (target.status === "target-offline") {
       return `${targetKind} is offline. ${target.reason}`;
     }

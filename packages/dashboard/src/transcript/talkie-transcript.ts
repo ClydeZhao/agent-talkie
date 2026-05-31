@@ -192,7 +192,7 @@ export class TalkieTranscript extends LitElement {
 
     return html`
       <div class="head">
-        <span class="head-title">Human ↔ Orchestrator Discussion</span>
+        <span class="head-title">${this.store.getActiveDiscussionTitle()}</span>
         <div class="actions">
           <button
             type="button"

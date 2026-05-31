@@ -5,8 +5,10 @@ import "../roster/talkie-roster.js";
 import "../shell/connection-shell.js";
 import "../shell/talkie-search-panel.js";
 import "../shell/talkie-send-bar.js";
+import "../shell/talkie-metadata-editor.js";
 import "../shell/talkie-space-picker.js";
 import type { DashboardStore } from "../store/dashboard-store.js";
+import type { RosterRow } from "../store/dashboard-store.js";
 import { TalkieTranscript } from "../transcript/talkie-transcript.js";
 import "../transcript/talkie-transcript.js";
 import "./talkie-console-status.js";
@@ -43,6 +45,13 @@ type DiagnosticsPanelElement = HTMLElement & {
   store: DashboardStore;
 };
 
+type MetadataEditorElement = HTMLElement & {
+  bridge: BrowserSessionBridge;
+  open: boolean;
+  row: RosterRow | null;
+  spaceId: string;
+};
+
 export type DashboardAppShellRefs = {
   picker: SpacePickerElement;
   connectionShell: ConnectionShellElement;
@@ -52,6 +61,7 @@ export type DashboardAppShellRefs = {
   transcript: TalkieTranscript;
   searchPanel: HTMLElement;
   diagnosticsPanel: DiagnosticsPanelElement;
+  metadataEditor: MetadataEditorElement;
   sendBar: HTMLElement;
 };
 
@@ -92,6 +102,9 @@ export function mountDashboardAppShell(options: {
   const diagnosticsPanel = document.createElement(
     "talkie-diagnostics-panel",
   ) as DiagnosticsPanelElement;
+  const metadataEditor = document.createElement(
+    "talkie-metadata-editor",
+  ) as MetadataEditorElement;
   const sendBar = document.createElement("talkie-send-bar");
 
   for (const element of [
@@ -102,12 +115,14 @@ export function mountDashboardAppShell(options: {
     transcript,
     searchPanel,
     diagnosticsPanel,
+    metadataEditor,
     sendBar,
   ]) {
     (element as unknown as { store: DashboardStore }).store = store;
   }
   (picker as unknown as { bridge: BrowserSessionBridge }).bridge = bridge;
   (picker as unknown as { httpOrigin: string }).httpOrigin = httpOrigin;
+  (metadataEditor as unknown as { bridge: BrowserSessionBridge }).bridge = bridge;
   (sendBar as unknown as { bridge: BrowserSessionBridge }).bridge = bridge;
 
   searchPanel.style.display = "none";
@@ -116,6 +131,7 @@ export function mountDashboardAppShell(options: {
   workspace.appendChild(diagnosticsPanel);
   mainPanel.appendChild(workspace);
   mainPanel.appendChild(sendBar);
+  mainPanel.appendChild(metadataEditor);
   bodyRow.appendChild(roster);
   bodyRow.appendChild(mainPanel);
 
@@ -132,6 +148,7 @@ export function mountDashboardAppShell(options: {
     transcript,
     searchPanel,
     diagnosticsPanel,
+    metadataEditor,
     sendBar,
   };
 }

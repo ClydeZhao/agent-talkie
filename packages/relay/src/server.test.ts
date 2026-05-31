@@ -7,6 +7,7 @@ import {
   insertSpaceWithSlug,
   migrate,
   openDatabase,
+  setOrchestratorSessionId,
 } from "@agent-talkie/persistence";
 import { describe, expect, it } from "vitest";
 import { v7 as uuidv7 } from "uuid";
@@ -435,6 +436,106 @@ describe("createRelayServer", () => {
       await srv.close();
     });
 
+    it("GET spaces marks unusable active spaces instead of presenting them as normal chats", async () => {
+      const dbPath = testDbPath();
+      const prep = openDatabase(dbPath);
+      migrate(prep);
+      const now = Date.now();
+      const { id: noOrchestratorSpaceId } = insertSpaceWithSlug(prep, {
+        slug: "no-orchestrator-room",
+        nowMs: now,
+      });
+      const { id: noOrchestratorMemberId } = createSession(prep, {
+        displayName: "Worker",
+        runtime: "codex-cli",
+        workspaceLabel: "repo",
+      });
+      insertMembership(prep, {
+        spaceId: noOrchestratorSpaceId,
+        sessionId: noOrchestratorMemberId,
+        nowMs: now,
+      });
+
+      const { id: offlineOrchestratorSpaceId } = insertSpaceWithSlug(prep, {
+        slug: "offline-orchestrator-room",
+        nowMs: now,
+      });
+      const { id: offlineOrchestratorId } = createSession(prep, {
+        displayName: "Lead",
+        runtime: "claude-code",
+        workspaceLabel: "repo",
+      });
+      insertMembership(prep, {
+        spaceId: offlineOrchestratorSpaceId,
+        sessionId: offlineOrchestratorId,
+        nowMs: now,
+      });
+      setOrchestratorSessionId(
+        prep,
+        offlineOrchestratorSpaceId,
+        offlineOrchestratorId,
+        now,
+      );
+      const { id: manualPullSpaceId } = insertSpaceWithSlug(prep, {
+        slug: "manual-pull-room",
+        nowMs: now,
+      });
+      const { id: manualPullOrchestratorId } = createSession(prep, {
+        displayName: "Tool Runtime",
+        runtime: "custom-runtime",
+        workspaceLabel: "repo",
+        inboxMode: "pull",
+      });
+      insertMembership(prep, {
+        spaceId: manualPullSpaceId,
+        sessionId: manualPullOrchestratorId,
+        nowMs: now,
+      });
+      setOrchestratorSessionId(
+        prep,
+        manualPullSpaceId,
+        manualPullOrchestratorId,
+        now,
+      );
+      prep.close();
+
+      const srv = await createRelayServer({
+        dbPath,
+        port: 0,
+        presenceStaleAfterMs: 60_000,
+      });
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/oversight/spaces`,
+      );
+      expect(res.status).toBe(200);
+      const rows = (await res.json()) as Array<{
+        slug: string;
+        actionability?: { state: string; reason: string; label: string };
+      }>;
+      const bySlug = new Map(rows.map((row) => [row.slug, row]));
+
+      expect(bySlug.get("no-orchestrator-room")?.actionability).toMatchObject({
+        state: "blocked",
+        reason: "no_orchestrator",
+        label: "No orchestrator",
+      });
+      expect(
+        bySlug.get("offline-orchestrator-room")?.actionability,
+      ).toMatchObject({
+        state: "blocked",
+        reason: "orchestrator_offline",
+        label: "Orchestrator offline",
+      });
+      expect(bySlug.get("manual-pull-room")?.actionability).toMatchObject({
+        state: "manual-pull",
+        reason: "orchestrator_manual_pull",
+        label: "Manual pull",
+      });
+
+      await srv.close();
+    });
+
     it("returns 200 JSON for GET /__agent-talkie/v1/health with matching generation", async () => {
       const token = "a".repeat(32);
       const srv = await createRelayServer({
@@ -829,6 +930,119 @@ describe("createRelayServer", () => {
       const err = (await nextJson(wsAgent)) as { type?: string; error?: string };
       expect(err.type).toBe("protocol.error");
       expect(err.error).toBe("metadata_patch_forbidden");
+
+      wsHuman.close();
+      wsAgent.close();
+      await srv.close();
+    });
+
+    it("allows a human to patch another session status metadata", async () => {
+      const srv = await createRelayServer({ dbPath: testDbPath(), port: 0 });
+      const slug = `meta-human-status-${randomUUID().slice(0, 8)}`;
+
+      const wsHuman = await openWs(srv.url);
+      await handshake(wsHuman);
+      wsHuman.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "H",
+            runtime: "vitest",
+            workspaceLabel: "w",
+            isHuman: true,
+          },
+        }),
+      );
+      const hReg = (await nextJson(wsHuman)) as { sessionId?: string };
+      const humanId = hReg.sessionId!;
+      wsHuman.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: humanId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      const hj = (await nextJson(wsHuman)) as { spaceId?: string };
+      const spaceId = hj.spaceId!;
+
+      const wsAgent = await openWs(srv.url);
+      await handshake(wsAgent);
+      wsAgent.send(
+        JSON.stringify({
+          type: "session.register",
+          newSession: {
+            displayName: "Agent",
+            runtime: "vitest",
+            workspaceLabel: "w",
+          },
+        }),
+      );
+      const aReg = (await nextJson(wsAgent)) as { sessionId?: string };
+      const agentId = aReg.sessionId!;
+      wsAgent.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: agentId,
+          kind: "control",
+          type: "space.join",
+          payload: { slug },
+          idempotencyKey: randomUUID(),
+        }),
+      );
+      await nextJson(wsAgent);
+
+      const metaP = nextJson(wsAgent);
+      wsHuman.send(
+        JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: humanId,
+          kind: "control",
+          type: "metadata.patch",
+          spaceId,
+          payload: {
+            namespace: "status",
+            targetSessionId: agentId,
+            patch: {
+              progress: "blocked",
+              blockedReason: "needs approval",
+            },
+          },
+        }),
+      );
+
+      const collab = (await metaP) as {
+        type?: string;
+        sessionId?: string;
+        namespace?: string;
+        patch?: { progress?: string; blockedReason?: string };
+      };
+      expect(collab.type).toBe("collaboration.metadata");
+      expect(collab.sessionId).toBe(agentId);
+      expect(collab.namespace).toBe("status");
+      expect(collab.patch?.progress).toBe("blocked");
+      expect(collab.patch?.blockedReason).toBe("needs approval");
+
+      const origin = httpOrigin(srv.url);
+      const res = await fetchWithTimeout(
+        `${origin}/__agent-talkie/v1/oversight/space-summary?slug=${encodeURIComponent(slug)}`,
+      );
+      expect(res.status).toBe(200);
+      const summary = (await res.json()) as {
+        members?: Array<{
+          sessionId: string;
+          progress: string;
+          blockedReason: string | null;
+        }>;
+      };
+      const agentRow = summary.members?.find((m) => m.sessionId === agentId);
+      expect(agentRow?.progress).toBe("blocked");
+      expect(agentRow?.blockedReason).toBe("needs approval");
 
       wsHuman.close();
       wsAgent.close();

@@ -517,6 +517,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     displayName: string;
     runtime: string;
     workspaceLabel: string;
+    inboxMode: "live" | "pull";
     isHuman: boolean;
   } {
     return {
@@ -535,6 +536,8 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         args.persisted?.workspaceLabel ??
         process.env.TALKIE_MCP_WORKSPACE_LABEL ??
         ".",
+      inboxMode:
+        process.env.TALKIE_MCP_INBOX_MODE === "live" ? "live" : "pull",
       isHuman: process.env.TALKIE_MCP_IS_HUMAN === "0" ? false : true,
     };
   }
@@ -837,11 +840,12 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
         });
       }
     });
-  const pullInboxInput = z.object({
+  const pullInboxInputShape = {
     slug: z.string().min(1).max(64).optional(),
     clear: z.boolean().optional(),
     limit: z.number().int().positive().max(100).optional(),
-  });
+  };
+  const pullInboxInput = z.object(pullInboxInputShape);
 
   function readOversightSummary(slug: string):
     | ReturnType<typeof getOversightSpaceSummaryBySlug>
@@ -940,31 +944,25 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
       inputSchema: z.any(),
     },
     async (): Promise<CallToolResult> => {
-      const dbPath = resolveDbPath(deps);
-      if (!existsSync(dbPath)) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ ok: true, spaces: [] }),
-            },
-          ],
-        };
+      const relay = await (relayPromise ??= ensureRelay({}));
+      const res = await fetch(
+        `http://127.0.0.1:${relay.port}/__agent-talkie/v1/oversight/spaces`,
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to list active spaces: HTTP ${res.status}`);
       }
-      const db = openDatabase(dbPath);
-      try {
-        migrate(db);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ ok: true, spaces: listOversightSpaces(db) }),
-            },
-          ],
-        };
-      } finally {
-        db.close();
+      const spaces = (await res.json()) as unknown;
+      if (!Array.isArray(spaces)) {
+        throw new Error("Failed to list active spaces: invalid relay response");
       }
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ ok: true, spaces }),
+          },
+        ],
+      };
     },
   );
 
@@ -1227,7 +1225,7 @@ export function createMcpServer(deps?: CreateMcpServerDeps): McpServer {
     {
       description:
         "Return pending inbound Talkie envelopes for this MCP-backed runtime session. Use clear=true to acknowledge the returned items.",
-      inputSchema: z.any(),
+      inputSchema: pullInboxInputShape,
     },
     async (raw: unknown): Promise<CallToolResult> => {
       const parsed = pullInboxInput.safeParse(raw ?? {});

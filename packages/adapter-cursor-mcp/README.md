@@ -44,6 +44,7 @@ After changing the config, reload Cursor or refresh MCP servers from Cursor sett
 ## Tools
 
 - `create_space` - Create a local Talkie Space and join this MCP-backed runtime session. Optional session metadata includes `name`, `runtime`, and `workspaceLabel`.
+- `list_active_spaces` - List active and idle local spaces with stable labels and actionability for runtime-native selection, including unavailable spaces and pull-based sessions that need manual inbox pulls.
 - `join_from_prompt` - Join a Talkie space from a dashboard join prompt. Optional session metadata includes `name`, `runtime`, and `workspaceLabel`.
 - `join_space` - Explicitly join a Talkie space by slug, for example `{ "slug": "debug-uat", "name": "cursor-reviewer", "workspaceLabel": "repo" }`. Each joined slug gets its own space-scoped Talkie identity.
 - `send_message` - Send a conversation message by `spaceId` or `slug`, optionally with `toSessionId` for direct routing. The MCP-backed runtime session must have joined that space first.
@@ -68,6 +69,7 @@ After changing the config, reload Cursor or refresh MCP servers from Cursor sett
 | `TALKIE_MCP_RUNTIME` | Runtime label, defaults to `adapter-cursor-mcp` |
 | `TALKIE_MCP_STATE_NAMESPACE` | Optional state-file namespace for this MCP server instance; defaults to `TALKIE_MCP_RUNTIME` |
 | `TALKIE_MCP_WORKSPACE_LABEL` | Workspace label shown in oversight surfaces |
+| `TALKIE_MCP_INBOX_MODE` | Session inbox mode, `pull` by default because MCP-backed runtimes consume Talkie messages through `pull_inbox`; set to `live` only for an adapter that actively consumes pushed messages |
 | `TALKIE_MCP_IS_HUMAN` | Set to `0` to register as a peer agent session; defaults to human if unset |
 
 ## Current low-level debug flow
@@ -125,7 +127,7 @@ The productized local flow remains:
 1. A runtime creates a Talkie Space without requiring a manual slug.
 2. The creating runtime joins as orchestrator and opens or focuses the dashboard.
 3. The dashboard shows a copyable join prompt.
-4. Claude Code joins from that prompt or from a short active-space list through its configured MCP tools.
+4. Claude Code joins from that prompt or from a short active-space list through its configured MCP tools, using actionability labels to avoid treating unusable spaces as healthy live chats.
 5. The user coordinates through the dashboard's Human ↔ Orchestrator discussion, with private participant chats as an intervention path.
 
 For adapter-level verification, use the low-level debug flow above. For automated local coverage of the product path, use `npm run smoke:local`; the current final gate requires real runtime UAT with Codex CLI and Claude Code in one local Talkie Space, with direct message delivery in both directions and dashboard-visible state.

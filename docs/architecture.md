@@ -71,6 +71,9 @@ When a human sends an untargeted conversation message, relay routing treats it a
 - A session's residency model is independent of role. Long-running and
   pull-based sessions can both be orchestrators or workers if their adapter/tool
   loop can receive Talkie messages, act on them, and report back.
+- Sessions declare their inbox mode explicitly as `live` or `pull`; dashboard
+  availability and relay actionability must use that declared capability rather
+  than inferring behavior from runtime brand strings.
 - Collaboration metadata belongs to the collaboration layer, not worker repo files.
 - Local context stays local unless deliberately shared into the collaboration layer.
 - Raw envelope JSON is diagnostic data, not the default human-facing product surface.
@@ -111,6 +114,10 @@ The default dashboard direction for the local product is orchestrator-first:
 - Human ↔ Orchestrator discussion is the primary view.
 - Participant private chats are secondary intervention paths.
 - Participant roster shows role, runtime, workspace label, status, and last activity.
+- The dashboard owner can directly edit participant collaboration metadata
+  such as role, focus, progress, and blocked reason.
+- Dashboard-created spaces use generated slugs with human-visible labels by
+  default; custom slugs remain an explicit advanced path.
 - Raw envelope diagnostics stay available behind explicit debug affordances.
 
 ## Relay And Lifecycle Architecture

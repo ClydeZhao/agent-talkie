@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   chmodSync,
   mkdirSync,
@@ -11,6 +12,14 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  appendTranscriptEntry,
+  createSession,
+  getSpaceBySlug,
+  insertMembership,
+  migrate,
+  openDatabase,
+} from "@agent-talkie/persistence";
 import { afterEach, describe, expect, it } from "vitest";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +41,12 @@ description: "Use Agent Talkie spaces"
 ---
 
 # Talkie Space
+`;
+
+const validCodexSkill = `${validSkill}
+Codex CLI: use --runtime codex-cli.
+Codex App: use --runtime codex-app.
+Both Codex hosts use the same pull-based command flow.
 `;
 
 describe("talkie CLI", () => {
@@ -157,7 +172,7 @@ describe("talkie CLI", () => {
     });
     writeFileSync(
       path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
-      validSkill,
+      validCodexSkill,
     );
     writeFileSync(
       path.join(projectRootDir, ".cursor", "skills", "talkie-space", "SKILL.md"),
@@ -205,6 +220,8 @@ describe("talkie CLI", () => {
         cli: { ok: boolean; path: string };
         dataDir: { ok: boolean; path: string };
         codexSkillTemplate: { ok: boolean; path: string };
+        codexCliPullFlow: { ok: boolean; path: string; runtime: string; mode: string };
+        codexAppPullFlow: { ok: boolean; path: string; runtime: string; mode: string };
         cursorSkillTemplate: { ok: boolean; path: string };
         claudeSkillTemplate: { ok: boolean; path: string };
         cursorMcpConfig: { ok: boolean; path: string; status: string };
@@ -225,6 +242,20 @@ describe("talkie CLI", () => {
     expect(payload.checks.codexSkillTemplate).toMatchObject({
       ok: true,
       path: path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
+      status: "configured",
+    });
+    expect(payload.checks.codexCliPullFlow).toMatchObject({
+      ok: true,
+      path: path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
+      runtime: "codex-cli",
+      mode: "pull",
+      status: "configured",
+    });
+    expect(payload.checks.codexAppPullFlow).toMatchObject({
+      ok: true,
+      path: path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
+      runtime: "codex-app",
+      mode: "pull",
       status: "configured",
     });
     expect(payload.checks.cursorSkillTemplate).toMatchObject({
@@ -277,7 +308,7 @@ describe("talkie CLI", () => {
     });
     writeFileSync(
       path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
-      validSkill,
+      validCodexSkill,
     );
     writeFileSync(
       path.join(projectRootDir, ".cursor", "skills", "talkie-space", "SKILL.md"),
@@ -388,10 +419,20 @@ describe("talkie CLI", () => {
     const payload = JSON.parse(doctor.stdout) as {
       checks: {
         codexSkillTemplate: { ok: boolean; status: string };
+        codexCliPullFlow: { ok: boolean; status: string };
+        codexAppPullFlow: { ok: boolean; status: string };
         cursorSkillTemplate: { ok: boolean; status: string };
       };
     };
     expect(payload.checks.codexSkillTemplate).toMatchObject({
+      ok: false,
+      status: "invalid_frontmatter",
+    });
+    expect(payload.checks.codexCliPullFlow).toMatchObject({
+      ok: false,
+      status: "invalid_frontmatter",
+    });
+    expect(payload.checks.codexAppPullFlow).toMatchObject({
       ok: false,
       status: "invalid_frontmatter",
     });
@@ -434,6 +475,94 @@ describe("talkie CLI", () => {
     });
   });
 
+  it("doctor accepts explicit runtime scope flags", () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-doctor-flags-"));
+    projectRootDir = mkdtempSync(
+      path.join(os.tmpdir(), "agent-talkie-cli-doctor-flags-project-root-"),
+    );
+    mkdirSync(path.join(projectRootDir, ".codex", "skills", "talkie-space"), {
+      recursive: true,
+    });
+    mkdirSync(path.join(projectRootDir, ".claude", "skills", "talkie-space"), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
+      validCodexSkill,
+    );
+    writeFileSync(
+      path.join(projectRootDir, ".claude", "skills", "talkie-space", "SKILL.md"),
+      validSkill,
+    );
+    writeFileSync(
+      path.join(projectRootDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          "agent-talkie": {
+            type: "stdio",
+            command: "talkie-claude-mcp",
+            args: [],
+          },
+        },
+      }),
+    );
+
+    const doctor = runCli(
+      [
+        "doctor",
+        "--project-root",
+        projectRootDir,
+        "--no-start-relay",
+        "--codex",
+        "--claude",
+      ],
+      {
+        AGENT_TALKIE_DATA_DIR: dataDir,
+        AGENT_TALKIE_RELAY_PORT: "0",
+      },
+    );
+    expect(doctor.status).toBe(1);
+    const payload = JSON.parse(doctor.stdout) as {
+      checks: {
+        codexSkillTemplate: { ok: boolean; status: string };
+        codexCliPullFlow: { ok: boolean; status: string };
+        codexAppPullFlow: { ok: boolean; status: string };
+        cursorSkillTemplate: { ok: boolean; status: string };
+        cursorMcpConfig: { ok: boolean; status: string };
+        claudeSkillTemplate: { ok: boolean; status: string };
+        claudeMcpConfig: { ok: boolean; status: string };
+      };
+    };
+    expect(payload.checks.codexSkillTemplate).toMatchObject({
+      ok: true,
+      status: "configured",
+    });
+    expect(payload.checks.codexCliPullFlow).toMatchObject({
+      ok: true,
+      status: "configured",
+    });
+    expect(payload.checks.codexAppPullFlow).toMatchObject({
+      ok: true,
+      status: "configured",
+    });
+    expect(payload.checks.cursorSkillTemplate).toMatchObject({
+      ok: true,
+      status: "skipped",
+    });
+    expect(payload.checks.cursorMcpConfig).toMatchObject({
+      ok: true,
+      status: "skipped",
+    });
+    expect(payload.checks.claudeSkillTemplate).toMatchObject({
+      ok: true,
+      status: "configured",
+    });
+    expect(payload.checks.claudeMcpConfig).toMatchObject({
+      ok: true,
+      status: "configured",
+    });
+  });
+
   it("doctor scopes runtime checks from the install manifest for partial installs", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-doctor-partial-"));
     projectRootDir = mkdtempSync(
@@ -447,7 +576,7 @@ describe("talkie CLI", () => {
     });
     writeFileSync(
       path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
-      validSkill,
+      validCodexSkill,
     );
     writeFileSync(
       path.join(projectRootDir, ".agent-talkie", "install-manifest.json"),
@@ -482,6 +611,8 @@ describe("talkie CLI", () => {
     const payload = JSON.parse(doctor.stdout) as {
       checks: {
         codexSkillTemplate: { ok: boolean; status: string };
+        codexCliPullFlow: { ok: boolean; status: string };
+        codexAppPullFlow: { ok: boolean; status: string };
         cursorSkillTemplate: { ok: boolean; status: string };
         cursorMcpConfig: { ok: boolean; status: string };
         claudeSkillTemplate: { ok: boolean; status: string };
@@ -489,6 +620,14 @@ describe("talkie CLI", () => {
       };
     };
     expect(payload.checks.codexSkillTemplate).toMatchObject({
+      ok: true,
+      status: "configured",
+    });
+    expect(payload.checks.codexCliPullFlow).toMatchObject({
+      ok: true,
+      status: "configured",
+    });
+    expect(payload.checks.codexAppPullFlow).toMatchObject({
       ok: true,
       status: "configured",
     });
@@ -658,7 +797,7 @@ describe("talkie CLI", () => {
     });
   });
 
-  it("list-active-spaces exposes product labels/status and join-from-prompt joins the referenced space", () => {
+  it("list-active-spaces exposes product labels/status/actionability and join-from-prompt joins the referenced space", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-product-join-"));
     const env = {
       AGENT_TALKIE_DATA_DIR: dataDir,
@@ -683,16 +822,53 @@ describe("talkie CLI", () => {
       joinPrompt: string;
     };
 
+    const noOrchestrator = runCli(
+      [
+        "create-space",
+        "--name",
+        "codex-worker",
+        "--runtime",
+        "codex-cli",
+        "--no-orchestrator",
+        "--no-open",
+      ],
+      env,
+    );
+    expect(noOrchestrator.status).toBe(0);
+    const noOrchestratorPayload = JSON.parse(noOrchestrator.stdout) as {
+      slug: string;
+    };
+
     const list = runCli(["list-active-spaces"], env);
     expect(list.status).toBe(0);
     const listed = JSON.parse(list.stdout) as {
-      spaces: Array<{ slug: string; label: string; status: string }>;
+      spaces: Array<{
+        slug: string;
+        label: string;
+        status: string;
+        actionability?: { state: string; reason: string; label: string };
+      }>;
     };
     expect(listed.spaces).toContainEqual(
       expect.objectContaining({
         slug: payload.slug,
         label: payload.label,
         status: "active",
+        actionability: expect.objectContaining({
+          state: "manual-pull",
+          reason: "orchestrator_manual_pull",
+          label: "Manual pull",
+        }),
+      }),
+    );
+    expect(listed.spaces).toContainEqual(
+      expect.objectContaining({
+        slug: noOrchestratorPayload.slug,
+        actionability: expect.objectContaining({
+          state: "blocked",
+          reason: "no_orchestrator",
+          label: "No orchestrator",
+        }),
       }),
     );
 
@@ -942,6 +1118,220 @@ describe("talkie CLI", () => {
       sessionId: sender.sessionId,
       to: recipient.sessionId,
       payload: { text: "selected sender message" },
+    });
+  });
+
+  it("pull only returns dashboard default messages to their effective orchestrator target", () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-effective-to-"));
+    const env = {
+      AGENT_TALKIE_DATA_DIR: dataDir,
+      AGENT_TALKIE_RELAY_PORT: "0",
+    };
+
+    const created = runCli(
+      [
+        "create-space",
+        "--name",
+        "codex-lead",
+        "--runtime",
+        "codex-cli",
+        "--workspace-label",
+        "repo",
+        "--no-open",
+      ],
+      env,
+    );
+    expect(created.status).toBe(0);
+    const lead = JSON.parse(created.stdout) as {
+      slug: string;
+      spaceId: string;
+      sessionId: string;
+    };
+
+    const workerJoin = runCli(
+      [
+        "join",
+        "--slug",
+        lead.slug,
+        "--name",
+        "claude-worker",
+        "--runtime",
+        "claude-code",
+        "--workspace-label",
+        "repo",
+      ],
+      env,
+    );
+    expect(workerJoin.status).toBe(0);
+
+    const db = openDatabase(path.join(dataDir, "relay.sqlite"));
+    try {
+      migrate(db);
+      const space = getSpaceBySlug(db, lead.slug);
+      expect(space?.id).toBe(lead.spaceId);
+      const human = createSession(db, {
+        displayName: "Dashboard",
+        runtime: "browser",
+        workspaceLabel: "dashboard",
+        isHuman: true,
+        nowMs: Date.now(),
+      });
+      insertMembership(db, {
+        spaceId: lead.spaceId,
+        sessionId: human.id,
+        nowMs: Date.now(),
+      });
+      appendTranscriptEntry(db, {
+        spaceId: lead.spaceId,
+        senderSessionId: human.id,
+        nowMs: Date.now(),
+        kind: "conversation",
+        envelopeJson: JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: human.id,
+          kind: "conversation",
+          type: "chat.message",
+          spaceId: lead.spaceId,
+          effectiveTo: lead.sessionId,
+          payload: { text: "default dashboard message" },
+        }),
+      });
+    } finally {
+      db.close();
+    }
+
+    const workerPull = runCli(
+      [
+        "pull",
+        "--slug",
+        lead.slug,
+        "--name",
+        "claude-worker",
+        "--runtime",
+        "claude-code",
+        "--clear",
+      ],
+      env,
+    );
+    expect(workerPull.status).toBe(0);
+    expect(JSON.parse(workerPull.stdout)).toMatchObject({
+      count: 0,
+      items: [],
+    });
+
+    const leadPull = runCli(
+      [
+        "pull",
+        "--slug",
+        lead.slug,
+        "--name",
+        "codex-lead",
+        "--runtime",
+        "codex-cli",
+        "--clear",
+      ],
+      env,
+    );
+    expect(leadPull.status).toBe(0);
+    const payload = JSON.parse(leadPull.stdout) as {
+      count: number;
+      items: Array<{
+        envelope: { effectiveTo?: string; payload: { text?: string } };
+      }>;
+    };
+    expect(payload.count).toBe(1);
+    expect(payload.items[0]?.envelope).toMatchObject({
+      effectiveTo: lead.sessionId,
+      payload: { text: "default dashboard message" },
+    });
+  });
+
+  it("pull returns dashboard private chat.direct interventions for the addressed session", () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-direct-pull-"));
+    const env = {
+      AGENT_TALKIE_DATA_DIR: dataDir,
+      AGENT_TALKIE_RELAY_PORT: "0",
+    };
+
+    const created = runCli(
+      [
+        "create-space",
+        "--name",
+        "codex-worker",
+        "--runtime",
+        "codex-cli",
+        "--workspace-label",
+        "repo",
+        "--no-open",
+      ],
+      env,
+    );
+    expect(created.status).toBe(0);
+    const worker = JSON.parse(created.stdout) as {
+      slug: string;
+      spaceId: string;
+      sessionId: string;
+    };
+
+    const db = openDatabase(path.join(dataDir, "relay.sqlite"));
+    try {
+      migrate(db);
+      const human = createSession(db, {
+        displayName: "Dashboard",
+        runtime: "browser",
+        workspaceLabel: "dashboard",
+        isHuman: true,
+        nowMs: Date.now(),
+      });
+      insertMembership(db, {
+        spaceId: worker.spaceId,
+        sessionId: human.id,
+        nowMs: Date.now(),
+      });
+      appendTranscriptEntry(db, {
+        spaceId: worker.spaceId,
+        senderSessionId: human.id,
+        nowMs: Date.now(),
+        kind: "conversation",
+        envelopeJson: JSON.stringify({
+          version: 1,
+          id: randomUUID(),
+          sessionId: human.id,
+          kind: "conversation",
+          type: "chat.direct",
+          spaceId: worker.spaceId,
+          to: worker.sessionId,
+          payload: { text: "private intervention" },
+        }),
+      });
+    } finally {
+      db.close();
+    }
+
+    const pulled = runCli(
+      [
+        "pull",
+        "--slug",
+        worker.slug,
+        "--name",
+        "codex-worker",
+        "--runtime",
+        "codex-cli",
+        "--clear",
+      ],
+      env,
+    );
+    expect(pulled.status).toBe(0);
+    const payload = JSON.parse(pulled.stdout) as {
+      count: number;
+      items: Array<{ envelope: { type: string; to?: string; payload: { text?: string } } }>;
+    };
+    expect(payload.count).toBe(1);
+    expect(payload.items[0]?.envelope).toMatchObject({
+      type: "chat.direct",
+      to: worker.sessionId,
+      payload: { text: "private intervention" },
     });
   });
 

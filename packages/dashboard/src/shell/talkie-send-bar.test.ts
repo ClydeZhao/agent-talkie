@@ -127,7 +127,7 @@ describe("TalkieSendBar", () => {
             focus: "",
             progress: "idle",
             blockedReason: null,
-            runtime: "codex-cli",
+            runtime: "adapter-codex",
             workspaceLabel: "repo",
             presenceState: "offline",
           },
@@ -148,6 +148,55 @@ describe("TalkieSendBar", () => {
     expect(
       el.shadowRoot?.querySelector<HTMLButtonElement>("button.send")?.disabled,
     ).toBe(true);
+
+    document.body.removeChild(el);
+  });
+
+  it("allows default messages to an offline pull-mode orchestrator with a manual-pull hint", async () => {
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const orchestratorId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "room",
+        label: "Room",
+        status: "active",
+        ownerSessionId: null,
+        orchestratorSessionId: orchestratorId,
+        memberCount: 1,
+        members: [
+          {
+            sessionId: orchestratorId,
+            displayName: "Tool Runtime",
+            isHuman: false,
+            role: "orchestrator",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "custom-runtime",
+            inboxMode: "pull",
+            workspaceLabel: "repo",
+            presenceState: "offline",
+          },
+        ],
+      },
+      uuidv7(),
+    );
+
+    const el = document.createElement("talkie-send-bar");
+    (el as any).store = store;
+    (el as any).bridge = bridgeStub();
+    document.body.appendChild(el);
+    await (el as any).updateComplete;
+
+    const text = el.shadowRoot?.textContent ?? "";
+    expect(text).toContain("manual pull");
+    expect(text).toContain("Tool Runtime");
+    expect(
+      el.shadowRoot?.querySelector<HTMLButtonElement>("button.send")?.disabled,
+    ).toBe(false);
 
     document.body.removeChild(el);
   });

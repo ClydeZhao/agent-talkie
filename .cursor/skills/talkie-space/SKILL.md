@@ -13,7 +13,7 @@ the MCP tools are unavailable, report that as a setup blocker instead of joining
 through CLI.
 
 - `create_space` creates a labeled local space, joins Cursor, and returns a dashboard URL plus join prompt.
-- `list_active_spaces` lists active and idle local spaces with labels.
+- `list_active_spaces` lists active and idle local spaces with labels and actionability, including unavailable spaces and pull-based sessions that need manual inbox pulls.
 - `join_from_prompt` joins from a pasted dashboard prompt.
 - `join_space`, `send_message`, and `pull_inbox` are lower-level fallbacks for an already selected space.
 

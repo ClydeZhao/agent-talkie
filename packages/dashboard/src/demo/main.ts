@@ -41,6 +41,7 @@ void (async () => {
     roster,
     searchPanel,
     diagnosticsPanel,
+    metadataEditor,
   } = mountDashboardAppShell({
     mount: app,
     store,
@@ -94,6 +95,18 @@ void (async () => {
       idempotencyKey: crypto.randomUUID(),
       spaceId,
     });
+  });
+
+  roster.addEventListener("talkie-metadata-edit", (ev) => {
+    const sid = (ev as CustomEvent<{ sessionId: string }>).detail.sessionId;
+    const row = store.roster.get(sid);
+    const spaceId = store.activeSpaceId;
+    if (!row || spaceId === null) {
+      return;
+    }
+    metadataEditor.row = row;
+    metadataEditor.spaceId = spaceId;
+    metadataEditor.open = true;
   });
 
   roster.addEventListener("talkie-membership-remove", (ev) => {
@@ -151,9 +164,14 @@ void (async () => {
     }
   };
 
-  const initialSlug = (() => {
-    const q = new URLSearchParams(location.search).get("space");
-    return q && q.length > 0 ? q : "default";
+  const initialSpace = (() => {
+    const params = new URLSearchParams(location.search);
+    const slug = params.get("space");
+    const label = params.get("label");
+    return {
+      slug: slug && slug.length > 0 ? slug : "default",
+      label: label && label.trim().length > 0 ? label.trim() : undefined,
+    };
   })();
 
   store.addListener(() => {
@@ -295,8 +313,12 @@ void (async () => {
   });
 
   try {
-    store.setCurrentSpaceSlug(initialSlug);
-    const joined = await connectJoinDashboardSession(bridge, initialSlug);
+    store.setCurrentSpaceSlug(initialSpace.slug);
+    const joined = await connectJoinDashboardSession(
+      bridge,
+      initialSpace.slug,
+      initialSpace.label,
+    );
     const selfSessionId = joined.selfSessionId;
     store.setActiveSpaceId(joined.spaceId);
     store.setCurrentSpaceSlug(joined.slug);

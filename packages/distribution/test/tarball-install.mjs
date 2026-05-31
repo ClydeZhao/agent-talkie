@@ -100,6 +100,7 @@ try {
     "node packages/distribution/bin/agent-talkie.js --yes --local --codex --claude",
     "doctor 只证明本地入口",
     "Codex CLI:",
+    "Codex App:",
     "Claude Code:",
     "orchestrator/worker 角色不得绑定 runtime 品牌",
     "Cursor App 是后续扩展，不属于当前 UAT gate",
@@ -162,6 +163,8 @@ try {
     "cli",
     "dataDir",
     "codexSkillTemplate",
+    "codexCliPullFlow",
+    "codexAppPullFlow",
     "cursorSkillTemplate",
     "claudeSkillTemplate",
     "cursorMcpConfig",
@@ -196,6 +199,28 @@ try {
     if (!hasSkillFrontmatter(skillPath)) {
       throw new Error(`installed skill is missing YAML frontmatter: ${skillPath}`);
     }
+  }
+  const installedCodexSkill = readFileSync(
+    join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
+    "utf8",
+  );
+  for (const expectedText of [
+    "--runtime codex-app",
+    "Codex App",
+    "same pull-based command flow",
+  ]) {
+    if (!installedCodexSkill.includes(expectedText)) {
+      throw new Error(
+        `installed Codex skill is missing expected Codex App text ${JSON.stringify(expectedText)}:\n${installedCodexSkill}`,
+      );
+    }
+  }
+  const installedClaudeSkill = readFileSync(
+    join(projectRootDir, ".claude", "skills", "talkie-space", "SKILL.md"),
+    "utf8",
+  );
+  if (!installedClaudeSkill.includes("labels and actionability")) {
+    throw new Error(`installed Claude skill is missing actionability text:\n${installedClaudeSkill}`);
   }
   const stopped = readJsonFromStdout(runInstalledTalkie(["relay", "stop"]).stdout);
   if (stopped.stopped !== true) {

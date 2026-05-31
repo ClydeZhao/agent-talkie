@@ -918,6 +918,7 @@ export class BrowserSessionBridge {
 
   async joinSpace(args: {
     slug: string;
+    label?: string;
     idempotencyKey: string;
   }): Promise<{ spaceId: string; slug: string }> {
     const ws = this.socket;
@@ -934,6 +935,11 @@ export class BrowserSessionBridge {
       throw new Error("space.join already in progress");
     }
 
+    const payload =
+      args.label !== undefined && args.label.trim().length > 0
+        ? { slug: args.slug, label: args.label.trim() }
+        : { slug: args.slug };
+
     return new Promise((resolve, reject) => {
       this.pendingJoin = { resolve, reject, slug: args.slug };
       ws.send(
@@ -943,7 +949,7 @@ export class BrowserSessionBridge {
           sessionId: this.registeredSessionId,
           kind: "control",
           type: "space.join",
-          payload: { slug: args.slug },
+          payload,
           idempotencyKey: args.idempotencyKey,
         }),
       );

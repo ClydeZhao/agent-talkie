@@ -13,6 +13,7 @@ export {
   disambiguateDisplayName,
   getSessionById,
   type NewSessionInput,
+  type SessionInboxMode,
   validateSessionFields,
 } from "./repositories/sessions.js";
 export {

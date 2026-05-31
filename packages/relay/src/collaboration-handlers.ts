@@ -310,7 +310,7 @@ export function handleCollaborationControl(
     const subjectSessionId =
       payload.namespace === "profile"
         ? (payload.targetSessionId ?? envelope.sessionId)
-        : envelope.sessionId;
+        : (payload.targetSessionId ?? envelope.sessionId);
 
     if (payload.namespace === "profile") {
       const senderRow = getSessionById(db, envelope.sessionId);
@@ -337,7 +337,24 @@ export function handleCollaborationControl(
         nowMs,
       });
     } else {
-      if (envelope.sessionId !== subjectSessionId) {
+      const senderRow = getSessionById(db, envelope.sessionId);
+      const targetsOther =
+        payload.targetSessionId !== undefined &&
+        payload.targetSessionId !== envelope.sessionId;
+      if (targetsOther) {
+        if (!senderRow?.isHuman) {
+          sendJson(ws, {
+            type: "protocol.error",
+            error: "metadata_patch_forbidden",
+          });
+          return true;
+        }
+        if (!hasActiveMembership(db, spaceId, payload.targetSessionId)) {
+          sendJson(ws, { type: "protocol.error", error: "not_in_space" });
+          return true;
+        }
+      }
+      if (!targetsOther && envelope.sessionId !== subjectSessionId) {
         sendJson(ws, {
           type: "protocol.error",
           error: "metadata_patch_forbidden",

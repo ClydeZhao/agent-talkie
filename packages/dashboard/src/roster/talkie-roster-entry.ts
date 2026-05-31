@@ -36,8 +36,13 @@ export class TalkieRosterEntry extends LitElement {
       align-items: flex-start;
       gap: 10px;
       padding: 10px 12px;
+      border: 0;
       box-sizing: border-box;
+      background: transparent;
+      color: inherit;
       cursor: pointer;
+      font: inherit;
+      text-align: left;
     }
     .icon-wrap {
       position: relative;
@@ -287,6 +292,23 @@ export class TalkieRosterEntry extends LitElement {
     );
   }
 
+  private _onMetadataEdit(ev: Event): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const r = this.row;
+    if (!r) {
+      return;
+    }
+    this._closeMenu();
+    this.dispatchEvent(
+      new CustomEvent("talkie-metadata-edit", {
+        detail: { sessionId: r.sessionId },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   private _onRemove(ev: Event): void {
     ev.preventDefault();
     ev.stopPropagation();
@@ -340,37 +362,37 @@ export class TalkieRosterEntry extends LitElement {
                     >
                       Clear orchestrator
                     </button>`}
+                <button
+                  type="button"
+                  class="menu-item metadata-edit"
+                  @click=${this._onMetadataEdit}
+                >
+                  Edit metadata
+                </button>
                 ${this.selfSessionId.length > 0 &&
-	                r.sessionId !== this.selfSessionId &&
-	                !r.owner
-	                  ? html`<button
-	                      type="button"
-	                      class="menu-item"
-	                      @click=${this._onRemove}
-	                    >
-	                      ${r.presenceState === "stale"
+                  r.sessionId !== this.selfSessionId &&
+                  !r.owner
+                  ? html`<button
+                      type="button"
+                      class="menu-item"
+                      @click=${this._onRemove}
+                    >
+                      ${r.presenceState === "stale"
                           ? "Clear stale participant"
                           : "Remove"}
-	                    </button>`
-	                  : nothing}
+                    </button>`
+                  : nothing}
               </div>
             </details>
           `
         : nothing;
     return html`
       <div class="row-wrap ${blocked ? "row-wrap--blocked" : ""}">
-        <div
+        <button
+          type="button"
           class="row-main"
           title=${titleAttr}
-          role="button"
-          tabindex="0"
           @click=${this._onSelectSendTarget}
-          @keydown=${(e: KeyboardEvent) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              this._onSelectSendTarget();
-            }
-          }}
         >
           <div class="icon-wrap">
             ${r.isHuman ? this._personIcon() : this._botIcon()}
@@ -417,7 +439,7 @@ export class TalkieRosterEntry extends LitElement {
               >
             </div>
           </div>
-        </div>
+        </button>
         ${ownerMenu}
       </div>
     `;

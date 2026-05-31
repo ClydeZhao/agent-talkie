@@ -37,6 +37,17 @@ describe("sessions repository", () => {
     expect(getSessionById(db, id)?.isHuman).toBe(true);
   });
 
+  it("persists the declared inbox mode independently from runtime brand", () => {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const { id } = createSession(db, {
+      ...minimalInput,
+      runtime: "custom-runtime",
+      inboxMode: "pull",
+    });
+    expect(getSessionById(db, id)?.inboxMode).toBe("pull");
+  });
+
   it("rejects workspaceLabel longer than 256 characters", () => {
     expect(() =>
       validateSessionFields({

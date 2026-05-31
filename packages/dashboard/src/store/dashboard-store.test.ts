@@ -329,6 +329,66 @@ describe("DashboardStore collaboration metadata", () => {
     expect(store.roster.get(agentId)?.role).toBe("");
   });
 
+  it("applies targeted status metadata patches to the selected participant", () => {
+    vi.useFakeTimers();
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const humanId = uuidv7();
+    const workerId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "metadata-room",
+        label: "Metadata Room",
+        status: "active",
+        ownerSessionId: humanId,
+        orchestratorSessionId: null,
+        memberCount: 2,
+        members: [
+          {
+            sessionId: humanId,
+            displayName: "Dashboard",
+            isHuman: true,
+            role: "",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+            presenceState: "online",
+          },
+          {
+            sessionId: workerId,
+            displayName: "Worker",
+            isHuman: false,
+            role: "worker",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "codex-cli",
+            workspaceLabel: "repo",
+            presenceState: "online",
+          },
+        ],
+      },
+      humanId,
+    );
+
+    store.applyMetadataPatchFromEnvelope(
+      makeEnvelope(spaceId, "control", humanId, "metadata.patch", {
+        namespace: "status",
+        targetSessionId: workerId,
+        patch: { progress: "blocked", blockedReason: "needs approval" },
+      }),
+    );
+    vi.runAllTimers();
+
+    expect(store.roster.get(workerId)?.progress).toBe("blocked");
+    expect(store.roster.get(workerId)?.blockedReason).toBe("needs approval");
+    expect(store.roster.get(humanId)?.progress).toBe("idle");
+  });
+
   it("stores relay status and notifies listeners", () => {
     const store = new DashboardStore();
     const spy = vi.fn();
@@ -447,9 +507,242 @@ describe("DashboardStore orchestrator console projection", () => {
     expect(projection.defaultDiscussion.status).toBe("missing-orchestrator");
     expect(projection.defaultDiscussion.reason).toContain("No orchestrator");
   });
+
+  it("marks offline pull-mode orchestrators as manual-pull send targets", () => {
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const selfSessionId = uuidv7();
+    const orchestratorId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "codex-pull",
+        label: "Codex Pull",
+        status: "active",
+        ownerSessionId: selfSessionId,
+        orchestratorSessionId: orchestratorId,
+        memberCount: 2,
+        members: [
+          {
+            sessionId: selfSessionId,
+            displayName: "Dashboard",
+            isHuman: true,
+            role: "",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+            presenceState: "online",
+          },
+          {
+            sessionId: orchestratorId,
+            displayName: "Tool Runtime",
+            isHuman: false,
+            role: "orchestrator",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "custom-runtime",
+            inboxMode: "pull",
+            workspaceLabel: "agent-talkie",
+            presenceState: "offline",
+          },
+        ],
+      },
+      selfSessionId,
+    );
+
+    const projection = store.getConsoleProjection();
+
+    expect(projection.orchestrator?.availability.kind).toBe("manual-pull");
+    expect(projection.orchestrator?.availability.label).toBe("Manual pull");
+    expect(projection.defaultDiscussion.status).toBe("target-manual-pull");
+    expect(projection.defaultDiscussion.canSend).toBe(true);
+    expect(projection.defaultDiscussion.reason).toContain("pull");
+  });
 });
 
 describe("DashboardStore transcript visibility (MiniSearch + filters)", () => {
+  it("default discussion hides worker chatter outside the Human-Orchestrator thread", () => {
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const selfId = uuidv7();
+    const orchestratorId = uuidv7();
+    const workerId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "thread-room",
+        label: "Thread Room",
+        status: "active",
+        ownerSessionId: selfId,
+        orchestratorSessionId: orchestratorId,
+        memberCount: 3,
+        members: [
+          {
+            sessionId: selfId,
+            displayName: "Dashboard",
+            isHuman: true,
+            role: "",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+            presenceState: "online",
+          },
+          {
+            sessionId: orchestratorId,
+            displayName: "Lead",
+            isHuman: false,
+            role: "orchestrator",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "claude-code",
+            workspaceLabel: "repo",
+            presenceState: "online",
+          },
+          {
+            sessionId: workerId,
+            displayName: "Worker",
+            isHuman: false,
+            role: "worker",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "codex-cli",
+            workspaceLabel: "repo",
+            presenceState: "offline",
+          },
+        ],
+      },
+      selfId,
+    );
+
+    store.appendTranscriptEnvelope({
+      ...makeEnvelope(spaceId, "conversation", selfId, "chat.message", {
+        text: "human asks lead",
+      }),
+      effectiveTo: orchestratorId,
+    });
+    store.appendTranscriptEnvelope(
+      makeEnvelope(spaceId, "conversation", orchestratorId, "chat.message", {
+        text: "lead replies",
+      }),
+    );
+    store.appendTranscriptEnvelope({
+      ...makeEnvelope(spaceId, "conversation", workerId, "chat.direct", {
+        text: "worker asks lead",
+      }),
+      to: orchestratorId,
+    });
+    store.appendTranscriptEnvelope(
+      makeEnvelope(spaceId, "conversation", workerId, "chat.message", {
+        text: "worker broadcast",
+      }),
+    );
+
+    expect(
+      store.getVisibleDiscussionLines().map((line) => line.envelope.payload.text),
+    ).toEqual(["human asks lead", "lead replies"]);
+    expect(store.getActiveDiscussionTitle()).toBe(
+      "Human ↔ Orchestrator Discussion",
+    );
+  });
+
+  it("selected private intervention shows only the Human-Participant private thread", () => {
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const selfId = uuidv7();
+    const orchestratorId = uuidv7();
+    const workerId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "private-room",
+        label: "Private Room",
+        status: "active",
+        ownerSessionId: selfId,
+        orchestratorSessionId: orchestratorId,
+        memberCount: 3,
+        members: [
+          {
+            sessionId: selfId,
+            displayName: "Dashboard",
+            isHuman: true,
+            role: "",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+            presenceState: "online",
+          },
+          {
+            sessionId: orchestratorId,
+            displayName: "Lead",
+            isHuman: false,
+            role: "orchestrator",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "claude-code",
+            workspaceLabel: "repo",
+            presenceState: "online",
+          },
+          {
+            sessionId: workerId,
+            displayName: "Worker",
+            isHuman: false,
+            role: "worker",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "codex-cli",
+            workspaceLabel: "repo",
+            presenceState: "offline",
+          },
+        ],
+      },
+      selfId,
+    );
+    store.setSendTargetSession(workerId);
+
+    store.appendTranscriptEnvelope({
+      ...makeEnvelope(spaceId, "conversation", selfId, "chat.direct", {
+        text: "private question",
+      }),
+      to: workerId,
+    });
+    store.appendTranscriptEnvelope({
+      ...makeEnvelope(spaceId, "conversation", workerId, "chat.direct", {
+        text: "private answer",
+      }),
+      to: selfId,
+    });
+    store.appendTranscriptEnvelope({
+      ...makeEnvelope(spaceId, "conversation", selfId, "chat.message", {
+        text: "default lead question",
+      }),
+      effectiveTo: orchestratorId,
+    });
+    store.appendTranscriptEnvelope(
+      makeEnvelope(spaceId, "conversation", workerId, "chat.message", {
+        text: "worker broadcast",
+      }),
+    );
+
+    expect(
+      store.getVisibleDiscussionLines().map((line) => line.envelope.payload.text),
+    ).toEqual(["private question", "private answer"]);
+    expect(store.getActiveDiscussionTitle()).toBe("Private chat with Worker");
+  });
+
   it('getVisibleTranscriptLines filters out control when kind is "conversation"', () => {
     const store = new DashboardStore();
     const spaceId = uuidv7();

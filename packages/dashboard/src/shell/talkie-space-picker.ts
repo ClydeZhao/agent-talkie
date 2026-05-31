@@ -15,10 +15,27 @@ function isValidSlug(s: string): boolean {
   return s.length > 0 && s.length <= SLUG_MAX_LEN && SLUG_PATTERN.test(s);
 }
 
-function dashboardUrlWithSpace(slug: string): string {
+function dashboardUrlWithSpace(slug: string, label?: string): string {
   const base = new URL("/dashboard", location.origin);
   base.searchParams.set("space", slug);
+  if (label !== undefined && label.trim().length > 0) {
+    base.searchParams.set("label", label.trim());
+  }
   return base.href;
+}
+
+function generatedSpaceSlug(nowMs = Date.now()): string {
+  return `talkie-${nowMs.toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function generatedSpaceLabel(now = new Date()): string {
+  const yyyy = String(now.getFullYear());
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const sec = String(now.getSeconds()).padStart(2, "0");
+  return `Talkie Space ${yyyy}-${mm}-${dd} ${hh}:${min}:${sec}`;
 }
 
 @customElement("talkie-space-picker")
@@ -80,6 +97,9 @@ export class TalkieSpacePicker extends LitElement {
       font-weight: 600;
       color: var(--talkie-muted, #8b949e);
     }
+    .row--blocked .space-label {
+      color: var(--talkie-accent-danger, #f85149);
+    }
     .footer {
       border-top: 1px solid var(--talkie-border, #30363d);
       padding: 8px 12px;
@@ -110,7 +130,8 @@ export class TalkieSpacePicker extends LitElement {
     .create-row button,
     .archive-btn,
     .destroy-btn,
-    .copy-btn {
+    .copy-btn,
+    .custom-btn {
       padding: 6px 10px;
       border-radius: 4px;
       border: 1px solid var(--talkie-border, #30363d);
@@ -131,6 +152,11 @@ export class TalkieSpacePicker extends LitElement {
     .copy-btn {
       width: calc(100% - 24px);
       margin: 8px 12px;
+      text-align: left;
+    }
+    .custom-btn {
+      width: 100%;
+      margin-top: 6px;
       text-align: left;
     }
     .copy-note {
@@ -203,6 +229,8 @@ export class TalkieSpacePicker extends LitElement {
   @state()
   private copyState: "idle" | "copied" | "failed" = "idle";
 
+  private storeUnsubscribe: (() => void) | undefined;
+
   private onDocClick = (ev: MouseEvent): void => {
     if (!this.open) {
       return;
@@ -216,11 +244,17 @@ export class TalkieSpacePicker extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     document.addEventListener("click", this.onDocClick);
+    this.storeUnsubscribe =
+      typeof this.store?.addListener === "function"
+        ? this.store.addListener(() => this.requestUpdate())
+        : undefined;
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     document.removeEventListener("click", this.onDocClick);
+    this.storeUnsubscribe?.();
+    this.storeUnsubscribe = undefined;
   }
 
   private togglePanel(ev: Event): void {
@@ -251,6 +285,10 @@ export class TalkieSpacePicker extends LitElement {
       }
       const rows: SpaceListRow[] = data.map((raw) => {
         const o = raw as Record<string, unknown>;
+        const actionabilityRaw =
+          typeof o.actionability === "object" && o.actionability !== null
+            ? (o.actionability as Record<string, unknown>)
+            : undefined;
         return {
           slug: String(o.slug ?? ""),
           label: String(o.label ?? o.slug ?? ""),
@@ -265,6 +303,21 @@ export class TalkieSpacePicker extends LitElement {
             o.orchestratorSessionId === undefined
               ? null
               : String(o.orchestratorSessionId),
+          ...(actionabilityRaw !== undefined
+            ? {
+                actionability: {
+                  state:
+                    actionabilityRaw.state === "blocked"
+                      ? "blocked"
+                      : actionabilityRaw.state === "manual-pull"
+                        ? "manual-pull"
+                      : "ready",
+                  reason: String(actionabilityRaw.reason ?? ""),
+                  label: String(actionabilityRaw.label ?? ""),
+                  detail: String(actionabilityRaw.detail ?? ""),
+                },
+              }
+            : {}),
         };
       });
       this.store?.setSpacesList(rows);
@@ -287,7 +340,24 @@ export class TalkieSpacePicker extends LitElement {
     this.open = false;
   }
 
-  private confirmCreate(ev: Event): void {
+  private createGeneratedSpace(ev: Event): void {
+    ev.stopPropagation();
+    const label = generatedSpaceLabel();
+    window.open(
+      dashboardUrlWithSpace(generatedSpaceSlug(), label),
+      "_self",
+    );
+    this.createExpanded = false;
+    this.open = false;
+    this.dispatchEvent(
+      new CustomEvent("talkie-space-refresh", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private confirmCustomCreate(ev: Event): void {
     ev.stopPropagation();
     this.createError = null;
     const slug = this.createInput.trim().toLowerCase();
@@ -439,23 +509,27 @@ export class TalkieSpacePicker extends LitElement {
                   : this.copyState === "failed"
                     ? html`<div class="err">Copy failed</div>`
                     : null}
-                ${(this.store?.spacesList ?? []).map(
-                  (r) => html`
+                ${(this.store?.spacesList ?? []).map((r) => {
+                  const blocked = r.actionability?.state === "blocked";
+                  const actionabilityLabel =
+                    r.actionability?.label?.trim() ?? "";
+                  return html`
                     <button
                       type="button"
-                      class="row ${r.slug === this.currentSlug
-                        ? "current"
-                        : ""}"
+                      class="row ${r.slug === this.currentSlug ? "current" : ""}
+                      ${blocked ? "row--blocked" : ""}"
                       @click=${(e: Event) => this.pickSpace(r.slug, e)}
+                      title=${r.actionability?.detail ?? ""}
                     >
                       <span class="space-label">${r.label || r.slug}</span>
                       <span class="space-meta">
                         ${r.slug} · ${r.status} · ${r.memberCount}
                         ${r.memberCount === 1 ? "member" : "members"}
+                        ${actionabilityLabel ? ` · ${actionabilityLabel}` : ""}
                       </span>
                     </button>
-                  `,
-                )}
+                  `;
+                })}
                 ${this.selfIsOwner && !unavailable
                   ? html`
                       <button
@@ -483,10 +557,20 @@ export class TalkieSpacePicker extends LitElement {
                           class="row"
                           @click=${(e: Event) => {
                             e.stopPropagation();
+                            this.createGeneratedSpace(e);
+                          }}
+                        >
+                          Create new space
+                        </button>
+                        <button
+                          type="button"
+                          class="custom-btn"
+                          @click=${(e: Event) => {
+                            e.stopPropagation();
                             this.createExpanded = true;
                           }}
                         >
-                          Create new space…
+                          Custom slug…
                         </button>
                       `
                     : html`
@@ -502,7 +586,7 @@ export class TalkieSpacePicker extends LitElement {
                             placeholder="new-space-slug"
                             aria-label="New space slug"
                           />
-                          <button type="button" @click=${this.confirmCreate}>
+                          <button type="button" @click=${this.confirmCustomCreate}>
                             Join
                           </button>
                         </div>

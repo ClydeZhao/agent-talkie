@@ -48,6 +48,7 @@ export const metadataPatchPayloadSchema = z.discriminatedUnion("namespace", [
   }),
   z.object({
     namespace: z.literal("status"),
+    targetSessionId: z.string().uuid().optional(),
     patch: z
       .object({
         progress: progressSchema.optional(),

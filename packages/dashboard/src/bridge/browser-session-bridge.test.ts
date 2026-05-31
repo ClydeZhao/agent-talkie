@@ -138,6 +138,54 @@ describe("BrowserSessionBridge", () => {
     bridge.close();
   });
 
+  it("includes a human-visible label when joining a generated dashboard space", async () => {
+    const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
+    const connectP = bridge.connect();
+    await new Promise((r) => setTimeout(r, 0));
+    const ws = lastMockSocket!;
+
+    ws.simulateInbound({
+      type: "handshake.ack",
+      negotiatedVersion: 1,
+      relay: { minVersion: 1, maxVersion: 1 },
+    });
+    await connectP;
+
+    const sessionId = uuidv7();
+    const regP = bridge.registerNewSession({
+      displayName: "Human",
+      runtime: "browser",
+      workspaceLabel: "dashboard",
+    });
+    ws.simulateInbound({
+      type: "session.registered",
+      sessionId,
+      reconnectSecret: "secret-a",
+      displayName: "Human",
+    });
+    await regP;
+
+    const joinP = bridge.joinSpace({
+      slug: "talkie-generated",
+      label: "Talkie Space 2026-05-31 12:00:00",
+      idempotencyKey: randomUUID(),
+    });
+
+    const joinRaw = JSON.parse(ws.sent[2]!) as Record<string, unknown>;
+    expect(joinRaw.payload).toEqual({
+      slug: "talkie-generated",
+      label: "Talkie Space 2026-05-31 12:00:00",
+    });
+
+    ws.simulateInbound({
+      type: "space.joined",
+      spaceId: randomUUID(),
+      slug: "talkie-generated",
+    });
+    await joinP;
+    bridge.close();
+  });
+
   it("updates maxRelaySeq on transcript.catchup", async () => {
     const bridge = new BrowserSessionBridge({ url: "ws://127.0.0.1:18765" });
     const connectP = bridge.connect();

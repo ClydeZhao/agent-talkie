@@ -84,8 +84,11 @@ export class TalkieConsoleStatus extends LitElement {
       return html``;
     }
     const projection = this.store.getConsoleProjection();
-    const defaultDiscussion = projection.defaultDiscussion;
-    const actionable = defaultDiscussion.canSend && projection.space.status === "active";
+    const sendTarget =
+      projection.privateIntervention ?? projection.defaultDiscussion;
+    const actionable = sendTarget.canSend && projection.space.status === "active";
+    const sendTargetStatus =
+      sendTarget.mode === "private" ? "Private chat" : "Ready";
     return html`
       <div class="grid" aria-label="Dashboard state">
         <div class="item">
@@ -108,10 +111,10 @@ export class TalkieConsoleStatus extends LitElement {
         <div class="item">
           <span class="label">Send Target</span>
           <span class=${`value ${actionable ? "" : "value--bad"}`}>
-            ${defaultDiscussion.targetLabel}
+            ${sendTarget.targetLabel}
           </span>
           <span class="sub">
-            ${actionable ? "Ready" : defaultDiscussion.reason}
+            ${actionable ? sendTargetStatus : sendTarget.reason}
           </span>
         </div>
       </div>

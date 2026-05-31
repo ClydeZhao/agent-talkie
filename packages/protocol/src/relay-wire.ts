@@ -37,6 +37,7 @@ export const sessionRegisterMessageSchema = z.object({
     workspaceLabel: z.string().min(1),
     branch: z.string().optional(),
     focus: z.string().optional(),
+    inboxMode: z.enum(["live", "pull"]).optional(),
     isHuman: z.boolean().optional().default(false),
   }),
 });
