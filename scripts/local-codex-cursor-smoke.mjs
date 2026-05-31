@@ -99,7 +99,7 @@ try {
   process.env.AGENT_TALKIE_DATA_DIR = dataDir;
   process.env.AGENT_TALKIE_RELAY_PORT = "0";
   process.env.TALKIE_CODEX_DISPLAY_NAME = "codex-smoke";
-  process.env.TALKIE_CODEX_RUNTIME = "adapter-codex";
+  process.env.TALKIE_CODEX_RUNTIME = "codex-cli";
 
   relay = await ensureRelayRunning({});
   mcpClient = new McpClient({ name: "agent-talkie-smoke", version: "0.0.0" });
@@ -160,12 +160,12 @@ try {
   const summary = await waitFor(async () => {
     const next = await getSpaceSummary(relay.port);
     const runtimes = new Set(next.members?.map((m) => m.runtime));
-    return runtimes.has("adapter-codex") && runtimes.has("adapter-cursor-mcp")
+    return runtimes.has("codex-cli") && runtimes.has("adapter-cursor-mcp")
       ? next
       : undefined;
   }, "codex and cursor MCP members");
 
-  const codexMember = summary.members.find((m) => m.runtime === "adapter-codex");
+  const codexMember = summary.members.find((m) => m.runtime === "codex-cli");
   const cursorMember = summary.members.find(
     (m) => m.runtime === "adapter-cursor-mcp",
   );

@@ -89,6 +89,7 @@ function writePersistedSessionState(
 
 class MockTalkieSessionClient {
   readonly handlers = new Set<(e: Envelope) => void>();
+  readonly relayMessageHandlers = new Set<(message: unknown) => void>();
   connect = vi.fn(async () => {});
   registerSession = vi.fn(async () => ({
     sessionId: REG_SID,
@@ -107,6 +108,9 @@ class MockTalkieSessionClient {
   onEnvelope = vi.fn((handler: (e: Envelope) => void) => {
     this.handlers.add(handler);
   });
+  onRelayMessage = vi.fn((handler: (message: unknown) => void) => {
+    this.relayMessageHandlers.add(handler);
+  });
   close = vi.fn();
   constructor(_opts?: { url?: string }) {
     void _opts;
@@ -114,6 +118,11 @@ class MockTalkieSessionClient {
   deliver(envelope: Envelope): void {
     for (const handler of this.handlers) {
       handler(envelope);
+    }
+  }
+  deliverRelayMessage(message: unknown): void {
+    for (const handler of this.relayMessageHandlers) {
+      handler(message);
     }
   }
 }
@@ -213,6 +222,35 @@ describe("runCodexAdapter", () => {
         [SPACE_SID]: { threadId: THREAD_ID },
       },
     });
+
+    abortController.abort();
+    await run;
+  });
+
+  it("registers Codex CLI adapter sessions as live inboxes", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    const abortController = new AbortController();
+    const run = runCodexAdapter({
+      spawn: vi.fn() as unknown as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      signal: abortController.signal,
+    });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(createdClient!.registerSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inboxMode: "live",
+      }),
+    );
 
     abortController.abort();
     await run;
@@ -507,12 +545,15 @@ describe("runCodexAdapter", () => {
     await flushMicrotasks();
 
     expect(createdClient!.resume).not.toHaveBeenCalled();
-    expect(createdClient!.registerSession).toHaveBeenCalledWith({
-      displayName: "codex-cli-real",
-      runtime: "codex-cli",
-      workspaceLabel: "agent-talkie",
-      isHuman: false,
-    });
+    expect(createdClient!.registerSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        displayName: "codex-cli-real",
+        runtime: "codex-cli",
+        workspaceLabel: "agent-talkie",
+        isHuman: false,
+        inboxMode: "live",
+      }),
+    );
     expect(
       JSON.parse(
         readFileSync(join(dataDir, CODEX_SESSION_STATE_FILE), "utf8"),
@@ -530,6 +571,44 @@ describe("runCodexAdapter", () => {
 
     abortController.abort();
     await run;
+  });
+
+  it("exits when the joined space is archived by the relay", async () => {
+    let createdClient: MockTalkieSessionClient | null = null;
+    class TrackedMock extends MockTalkieSessionClient {
+      constructor(opts?: { url?: string }) {
+        super(opts);
+        createdClient = this;
+      }
+    }
+
+    let ready = false;
+    const run = runCodexAdapter({
+      spawn: vi.fn(createMockChild) as unknown as typeof import("node:child_process").spawn,
+      ensureRelay: async () => ({ port: 18765 }),
+      TalkieSessionClient: TrackedMock as unknown as typeof TalkieSessionClient,
+      onReady: () => {
+        ready = true;
+      },
+    });
+
+    await waitFor(() => ready);
+    expect(createdClient!.onRelayMessage).toHaveBeenCalledOnce();
+
+    createdClient!.deliverRelayMessage({
+      type: "space.archived",
+      slug: "demo",
+    });
+
+    await expect(
+      Promise.race([
+        run.then(() => "resolved"),
+        new Promise((resolve) => {
+          setTimeout(() => resolve("timed-out"), 100);
+        }),
+      ]),
+    ).resolves.toBe("resolved");
+    expect(createdClient!.close).toHaveBeenCalledOnce();
   });
 
   it("reports blocked stderr lines via metadata.patch while a turn is running", async () => {

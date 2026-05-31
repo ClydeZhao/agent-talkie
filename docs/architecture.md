@@ -24,7 +24,7 @@ The monorepo is organized around one relay-centered runtime:
 | `@agent-talkie/cli` | User-facing and debug commands, local smoke entry points, oversight fallback commands |
 | `@agent-talkie/dashboard` | Lit/Vite dashboard, browser session bridge, reactive store, roster, transcript/search UI |
 | `@agent-talkie/adapter-stdio` | Reference stdio ingress using Content-Length framing |
-| `@agent-talkie/adapter-codex` | Codex runtime bridge built on stdio ingress and shared client behavior |
+| `@agent-talkie/adapter-codex` | Codex CLI live sidecar bridge that listens to Talkie messages, runs `codex exec --json` / `codex exec --json resume`, and writes replies back |
 | `@agent-talkie/adapter-cursor-mcp` | MCP server exposing Talkie tools and resources; currently wrapped for Cursor App and Claude Code |
 
 ## Default Architecture
@@ -44,6 +44,22 @@ SQLite connections use WAL mode and a bounded busy timeout so local adapters, CL
 Local and future remote collaboration should use the same protocol. The difference is where the relay runs, not a different transport model.
 
 Adapter ingress may use stdio, MCP, or runtime-specific tool calls, but those are edge concerns. The core transport remains the relay WebSocket protocol.
+
+Codex CLI's default residency model is a live sidecar. `talkie codex start`
+launches a durable `talkie-codex-adapter` process for one space, registers a
+`codex-cli` session with `inboxMode: live`, and keeps receiving Talkie messages
+without requiring `talkie pull`. The sidecar invokes the local `codex` CLI with
+the user's permissions and reports native auth, permission, model, or reentry
+failures as collaboration metadata. The older pull commands remain a fallback
+for Codex App or emergency manual operation, but they are not the primary Codex
+CLI product path.
+
+The Codex CLI sidecar is bound to the joined space lifecycle. Normal users
+should not need to remember to stop it: when the relay reports that the joined
+space was archived or destroyed, or that the sidecar membership was removed,
+the adapter exits and `talkie codex status` prunes the stale pid record. Manual
+`talkie codex stop` remains an emergency/debug command for a still-running
+sidecar.
 
 ## Data Flow
 
@@ -85,9 +101,9 @@ When a human sends an untargeted conversation message, relay routing treats it a
 
 ## Current Delivery Target
 
-Codex CLI and Claude Code explicitly joining the same Talkie Space is now the proven runtime baseline. The current delivery target is the local orchestrator dashboard built on top of that baseline: a human-facing dashboard that makes the current space, orchestrator, runtime availability, default discussion, private intervention, and failure states understandable without exposing relay internals as the primary surface.
+Codex CLI live sidecar and Claude Code explicitly joining the same Talkie Space is now the proven runtime baseline. The current delivery target is the local orchestrator dashboard built on top of that baseline: a human-facing dashboard that makes the current space, orchestrator, runtime availability, default discussion, private intervention, and failure states understandable without exposing relay internals as the primary surface.
 
-Cursor App remains a supported architecture direction through the MCP adapter, but it is not part of the current delivery gate. The gate should stay narrow until the dashboard proves that the verified Codex CLI + Claude Code loop is operable by a user, not merely observable by a developer.
+Codex App is not assumed live. It remains pull-based/best-effort unless a stable app hook, app server, or extension injection path is found and verified. Cursor App remains a supported architecture direction through the MCP adapter, but it is not part of the current delivery gate. The gate should stay narrow until the dashboard proves that the verified Codex CLI live sidecar + Claude Code loop is operable by a user, not merely observable by a developer.
 
 ## Current Simplifications
 
@@ -147,6 +163,6 @@ Use package tests for unit and integration behavior:
 - `npm run test -w @agent-talkie/adapter-codex`
 - `npm run test -w @agent-talkie/adapter-cursor-mcp`
 
-Use `npm test` for a full package test baseline and `npm run build` for a full build baseline. Use `npm run smoke:local` for local cross-runtime product smoke when CLI, adapter, relay lifecycle, or dashboard launch behavior changes.
+Use `npm test` for a full package test baseline and `npm run build` for a full build baseline. Use `npm run smoke:local` for local cross-runtime product smoke when CLI, adapter, relay lifecycle, or dashboard launch behavior changes. Use `npm run smoke:codex-live` for the Codex CLI live sidecar path with a fake Codex child process, including automatic receive/reply and reentry blocked metadata. Use `npm run smoke:codex-claude` before claiming the Codex CLI live sidecar + Claude Code collaboration loop still works.
 
 Use Playwright for browser-visible dashboard behavior. Use Computer Use only when verifying real desktop/runtime integration such as Codex CLI terminal behavior, Claude Code MCP/tool availability, Cursor App MCP availability when Cursor is in scope, native prompts, or a true copy-paste join flow across tools.

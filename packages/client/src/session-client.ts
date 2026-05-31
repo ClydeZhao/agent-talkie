@@ -32,6 +32,7 @@ export class TalkieSessionClient {
   private ws: WebSocket | null = null;
   private registeredSessionId: string | null = null;
   private readonly envelopeHandlers = new Set<(env: Envelope) => void>();
+  private readonly relayMessageHandlers = new Set<(message: unknown) => void>();
   private pendingJoin:
     | {
         resolve: (v: { spaceId: string; slug: string }) => void;
@@ -238,6 +239,14 @@ export class TalkieSessionClient {
       }
     }
 
+    for (const h of this.relayMessageHandlers) {
+      try {
+        h(parsed);
+      } catch {
+        /* ignore handler errors */
+      }
+    }
+
     const env = safeParseEnvelope(parsed);
     if (env.success) {
       for (const h of this.envelopeHandlers) {
@@ -351,6 +360,10 @@ export class TalkieSessionClient {
 
   onEnvelope(handler: (env: Envelope) => void): void {
     this.envelopeHandlers.add(handler);
+  }
+
+  onRelayMessage(handler: (message: unknown) => void): void {
+    this.relayMessageHandlers.add(handler);
   }
 
   close(): void {

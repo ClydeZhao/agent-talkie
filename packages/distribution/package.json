@@ -19,6 +19,7 @@
     "test:tarball-install": "node test/tarball-install.mjs"
   },
   "dependencies": {
+    "@agent-talkie/adapter-codex": "0.0.0",
     "@agent-talkie/adapter-cursor-mcp": "0.0.0",
     "@agent-talkie/cli": "0.0.0",
     "@lit-labs/virtualizer": "^2.1.1",
@@ -35,6 +36,7 @@
     "zod": "^4.3.6"
   },
   "bundledDependencies": [
+    "@agent-talkie/adapter-codex",
     "@agent-talkie/adapter-cursor-mcp",
     "@agent-talkie/cli",
     "@agent-talkie/client",

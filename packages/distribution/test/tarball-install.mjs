@@ -100,11 +100,12 @@ try {
     "node packages/distribution/bin/agent-talkie.js --yes --local --codex --claude",
     "doctor 只证明本地入口",
     "Codex CLI:",
+    "talkie codex start",
     "Codex App:",
     "Claude Code:",
     "orchestrator/worker 角色不得绑定 runtime 品牌",
     "Cursor App 是后续扩展，不属于当前 UAT gate",
-    "Do not ask me to run low-level join/send/pull transport commands.",
+    "Do not ask me to run talkie pull for normal Codex CLI follow-up messages.",
     "跑完后回传给 Codex 的证据模板",
     "claudeCodeJoinedAndAcked: yes/no",
     "orchestratorRotationWorked: yes/no",
@@ -145,6 +146,19 @@ try {
   run(installedTalkiePath(), ["--help"], {
     cwd: projectRootDir,
   });
+  const codexAdapterWrapperPath = join(
+    projectRootDir,
+    ".agent-talkie",
+    "bin",
+    "talkie-codex-adapter",
+  );
+  if (!existsSync(codexAdapterWrapperPath)) {
+    throw new Error("Codex adapter wrapper was not installed");
+  }
+  const codexAdapterWrapper = readFileSync(codexAdapterWrapperPath, "utf8");
+  if (!codexAdapterWrapper.includes("talkie-codex-adapter")) {
+    throw new Error("Codex adapter wrapper does not launch talkie-codex-adapter");
+  }
   const doctor = run(
     installedTalkiePath(),
     ["doctor", "--project-root", projectRootDir],
@@ -163,6 +177,7 @@ try {
     "cli",
     "dataDir",
     "codexSkillTemplate",
+    "codexLiveSidecar",
     "codexCliPullFlow",
     "codexAppPullFlow",
     "cursorSkillTemplate",
@@ -205,9 +220,12 @@ try {
     "utf8",
   );
   for (const expectedText of [
+    "talkie codex start",
+    "Codex CLI live sidecar",
+    "Pull fallback",
     "--runtime codex-app",
     "Codex App",
-    "same pull-based command flow",
+    "pull-based/best-effort",
   ]) {
     if (!installedCodexSkill.includes(expectedText)) {
       throw new Error(

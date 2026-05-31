@@ -562,6 +562,60 @@ describe("DashboardStore orchestrator console projection", () => {
     expect(projection.defaultDiscussion.canSend).toBe(true);
     expect(projection.defaultDiscussion.reason).toContain("pull");
   });
+
+  it("marks an online Codex CLI live sidecar as an available default target", () => {
+    const store = new DashboardStore();
+    const spaceId = uuidv7();
+    const selfSessionId = uuidv7();
+    const orchestratorId = uuidv7();
+    store.setActiveSpaceId(spaceId);
+    store.hydrateFromSpaceSummary(
+      {
+        spaceId,
+        slug: "codex-live",
+        label: "Codex Live",
+        status: "active",
+        ownerSessionId: selfSessionId,
+        orchestratorSessionId: orchestratorId,
+        memberCount: 2,
+        members: [
+          {
+            sessionId: selfSessionId,
+            displayName: "Dashboard",
+            isHuman: true,
+            role: "",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "browser",
+            workspaceLabel: "dashboard",
+            presenceState: "online",
+          },
+          {
+            sessionId: orchestratorId,
+            displayName: "Codex CLI",
+            isHuman: false,
+            role: "orchestrator",
+            focus: "",
+            progress: "idle",
+            blockedReason: null,
+            runtime: "codex-cli",
+            inboxMode: "live",
+            workspaceLabel: "agent-talkie",
+            presenceState: "online",
+          },
+        ],
+      },
+      selfSessionId,
+    );
+
+    const projection = store.getConsoleProjection();
+
+    expect(projection.orchestrator?.availability.kind).toBe("available");
+    expect(projection.orchestrator?.availability.label).toBe("Available");
+    expect(projection.defaultDiscussion.status).toBe("ready");
+    expect(projection.defaultDiscussion.canSend).toBe(true);
+  });
 });
 
 describe("DashboardStore transcript visibility (MiniSearch + filters)", () => {

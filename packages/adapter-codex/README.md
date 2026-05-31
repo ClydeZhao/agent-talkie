@@ -5,6 +5,8 @@ Machine-interface adapter for **Codex CLI**. It does not bridge interactive stdi
 ## Model
 
 - Talkie session registration/resume is persisted in `adapter-codex-session-state.json`.
+- The registered Talkie session uses `inboxMode: "live"` and is expected to be shown as available while the sidecar is connected.
+- The sidecar follows the joined space lifecycle. It exits when the relay reports that the space was archived/destroyed or that the sidecar membership was removed.
 - Codex thread ids are persisted separately in `adapter-codex-thread-state.json`, keyed by Talkie `spaceId`.
 - First message seen for a space runs `codex exec --json <prompt>`.
 - Later messages for that same space run `codex exec --json ... resume <thread_id> <prompt>`, with extra `TALKIE_CODEX_ARGS_JSON` options placed before the `resume` subcommand.
@@ -35,12 +37,27 @@ The executable comes from `TALKIE_CODEX_COMMAND` (default `codex`) and runs with
 
 After build: `talkie-codex-adapter` (see `package.json` `bin`).
 
+Installed product flow:
+
+```bash
+./.agent-talkie/bin/talkie codex start --slug <slug> --name "Codex CLI" --workspace-label <label>
+./.agent-talkie/bin/talkie codex status
+./.agent-talkie/bin/talkie codex stop --slug <slug> --name "Codex CLI" --workspace-label <label>
+```
+
+`talkie codex start` launches the durable wrapper installed at
+`.agent-talkie/bin/talkie-codex-adapter`, sets the `TALKIE_CODEX_*` environment
+for a `codex-cli` live sidecar, records pid/log/status, and is idempotent for
+the same slug/name/workspace label. `talkie codex stop` is for emergency or
+debug cleanup; normal space archive/destroy should stop the sidecar
+automatically, and `talkie codex status` prunes stale pid records.
+
 ## Automated local smoke test
 
 From the repository root:
 
 ```bash
-npm run smoke:local
+npm run smoke:codex-live
 ```
 
-The smoke uses an isolated temporary data directory, starts the local relay, runs this adapter with a fake Codex child process, sends a Cursor MCP-style message, and verifies that the Cursor MCP inbox receives the fake Codex reply. It does not require a real Codex or Cursor install.
+The smoke uses an isolated temporary data directory, starts the local relay, runs this adapter with a fake Codex child process, sends a dashboard-style default message to the Codex live sidecar, verifies the fake Codex reply in the transcript, verifies reentry blocked metadata, then archives the space and verifies the sidecar exits. It does not require a real Codex install.

@@ -115,6 +115,13 @@ vi.mock("ws", () => {
             spaceId: uuidv7(),
           }),
         );
+        this.emit(
+          "message",
+          JSON.stringify({
+            type: "space.archived",
+            slug: "my-space",
+          }),
+        );
       });
     }
 
@@ -131,8 +138,16 @@ vi.mock("ws", () => {
 });
 
 describe("TalkieSessionClient joinSpace", () => {
+  function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setImmediate(resolve));
+  }
+
   it("sends space.join envelope with slug after registerSession", async () => {
     const client = new TalkieSessionClient();
+    const relayMessages: unknown[] = [];
+    client.onRelayMessage((message) => {
+      relayMessages.push(message);
+    });
     await client.connect();
     await client.registerSession({
       displayName: "join-tester",
@@ -149,6 +164,11 @@ describe("TalkieSessionClient joinSpace", () => {
     expect(out.spaceId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
     );
+    await flushMicrotasks();
+    expect(relayMessages).toContainEqual({
+      type: "space.archived",
+      slug: "my-space",
+    });
     client.close();
   });
 });

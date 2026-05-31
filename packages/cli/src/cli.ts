@@ -23,6 +23,11 @@ import {
   runPullCommand,
   runSendCommand,
 } from "./session-commands.js";
+import {
+  runCodexStartCommand,
+  runCodexStatusCommand,
+  runCodexStopCommand,
+} from "./codex-sidecar.js";
 
 function parseWatchRefreshMs(raw: string | undefined): number {
   const defaultMs = 1000;
@@ -67,6 +72,31 @@ function isConfiguredClaudeMcpCommand(projectRoot: string, command: unknown): bo
     : resolve(projectRoot, command);
   const expected = join(projectRoot, ".agent-talkie", "bin", "talkie-claude-mcp");
   return resolved === expected && isExecutablePath(resolved);
+}
+
+function checkCodexLiveSidecar(projectRoot: string, skipped: boolean): DoctorCheck {
+  const wrapperPath = join(
+    projectRoot,
+    ".agent-talkie",
+    "bin",
+    "talkie-codex-adapter",
+  );
+  if (skipped) {
+    return {
+      ok: true,
+      path: wrapperPath,
+      mode: "live",
+      status: "skipped",
+    };
+  }
+  const executable = isExecutablePath(wrapperPath);
+  return {
+    ok: executable,
+    path: wrapperPath,
+    mode: "live",
+    kind: "codex-adapter-wrapper",
+    status: executable ? "configured" : "missing",
+  };
 }
 
 function hasSkillFrontmatter(path: string): boolean {
@@ -178,7 +208,7 @@ function resolveDoctorRuntimeSelection(
         .filter((kind): kind is string => typeof kind === "string"),
     );
     return {
-      codex: kinds.has("codex-skill"),
+      codex: kinds.has("codex-skill") || kinds.has("codex-adapter-bin"),
       cursor: kinds.has("cursor-skill") || kinds.has("cursor-mcp"),
       claude: kinds.has("claude-skill") || kinds.has("claude-mcp"),
     };
@@ -276,6 +306,7 @@ async function runDoctor(opts: {
 
   const codexSkillPath = join(projectRoot, ".codex", "skills", "talkie-space", "SKILL.md");
   if (!runtimeSelection.codex) {
+    checks.codexLiveSidecar = checkCodexLiveSidecar(projectRoot, true);
     checks.codexSkillTemplate = { ok: true, path: codexSkillPath, status: "skipped" };
     checks.codexCliPullFlow = checkCodexPullFlow({
       path: codexSkillPath,
@@ -292,6 +323,7 @@ async function runDoctor(opts: {
       hasFrontmatter: false,
     });
   } else {
+    checks.codexLiveSidecar = checkCodexLiveSidecar(projectRoot, false);
     const codexSkillExists = existsSync(codexSkillPath);
     const codexSkillHasFrontmatter = hasSkillFrontmatter(codexSkillPath);
     checks.codexSkillTemplate = {
@@ -477,6 +509,67 @@ relayCmd
     try {
       const r = await getRelayStatus({});
       console.log(JSON.stringify(r));
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+const codexCmd = program.command("codex");
+codexCmd.description("Manage a Codex CLI live sidecar");
+
+codexCmd
+  .command("start")
+  .description("Start or reuse a Codex CLI live sidecar for a Talkie Space")
+  .requiredOption("--slug <slug>", "space slug")
+  .requiredOption("--name <name>", "Codex session display name")
+  .requiredOption("--workspace-label <label>", "workspace label shown in roster/session metadata")
+  .option("--project-root <path>", "project/config root to launch from", process.cwd())
+  .action(async (opts: {
+    slug: string;
+    name: string;
+    workspaceLabel: string;
+    projectRoot?: string;
+  }) => {
+    try {
+      await runCodexStartCommand({
+        slug: opts.slug,
+        name: opts.name,
+        workspaceLabel: opts.workspaceLabel,
+        projectRoot: opts.projectRoot,
+      });
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+codexCmd
+  .command("status")
+  .description("Print Codex CLI live sidecar status")
+  .action(async () => {
+    try {
+      await runCodexStatusCommand();
+    } catch (e) {
+      handleError(e);
+    }
+  });
+
+codexCmd
+  .command("stop")
+  .description("Stop Codex CLI live sidecars")
+  .option("--slug <slug>", "space slug")
+  .option("--name <name>", "Codex session display name")
+  .option("--workspace-label <label>", "workspace label shown in roster/session metadata")
+  .action(async (opts: {
+    slug?: string;
+    name?: string;
+    workspaceLabel?: string;
+  }) => {
+    try {
+      await runCodexStopCommand({
+        slug: opts.slug,
+        name: opts.name,
+        workspaceLabel: opts.workspaceLabel,
+      });
     } catch (e) {
       handleError(e);
     }

@@ -44,9 +44,11 @@ description: "Use Agent Talkie spaces"
 `;
 
 const validCodexSkill = `${validSkill}
-Codex CLI: use --runtime codex-cli.
+Codex CLI: use talkie codex start --slug <slug> --name <name> --workspace-label <label>.
+Codex CLI live sidecar registers with --runtime codex-cli and inboxMode live.
 Codex App: use --runtime codex-app.
-Both Codex hosts use the same pull-based command flow.
+Codex App remains pull-based/best-effort until a stable app hook exists.
+Pull fallback: talkie pull --clear.
 `;
 
 describe("talkie CLI", () => {
@@ -170,6 +172,9 @@ describe("talkie CLI", () => {
     mkdirSync(path.join(projectRootDir, ".claude", "skills", "talkie-space"), {
       recursive: true,
     });
+    mkdirSync(path.join(projectRootDir, ".agent-talkie", "bin"), {
+      recursive: true,
+    });
     writeFileSync(
       path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
       validCodexSkill,
@@ -205,6 +210,14 @@ describe("talkie CLI", () => {
         },
       }),
     );
+    const codexAdapterWrapperPath = path.join(
+      projectRootDir,
+      ".agent-talkie",
+      "bin",
+      "talkie-codex-adapter",
+    );
+    writeFileSync(codexAdapterWrapperPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(codexAdapterWrapperPath, 0o755);
     const env = {
       AGENT_TALKIE_DATA_DIR: dataDir,
       AGENT_TALKIE_RELAY_PORT: "0",
@@ -220,6 +233,7 @@ describe("talkie CLI", () => {
         cli: { ok: boolean; path: string };
         dataDir: { ok: boolean; path: string };
         codexSkillTemplate: { ok: boolean; path: string };
+        codexLiveSidecar: { ok: boolean; path: string; mode: string; status: string };
         codexCliPullFlow: { ok: boolean; path: string; runtime: string; mode: string };
         codexAppPullFlow: { ok: boolean; path: string; runtime: string; mode: string };
         cursorSkillTemplate: { ok: boolean; path: string };
@@ -242,6 +256,12 @@ describe("talkie CLI", () => {
     expect(payload.checks.codexSkillTemplate).toMatchObject({
       ok: true,
       path: path.join(projectRootDir, ".codex", "skills", "talkie-space", "SKILL.md"),
+      status: "configured",
+    });
+    expect(payload.checks.codexLiveSidecar).toMatchObject({
+      ok: true,
+      path: path.join(projectRootDir, ".agent-talkie", "bin", "talkie-codex-adapter"),
+      mode: "live",
       status: "configured",
     });
     expect(payload.checks.codexCliPullFlow).toMatchObject({
@@ -334,6 +354,14 @@ describe("talkie CLI", () => {
     writeFileSync(claudeWrapperPath, "#!/bin/sh\nexit 0\n");
     chmodSync(wrapperPath, 0o755);
     chmodSync(claudeWrapperPath, 0o755);
+    const codexAdapterWrapperPath = path.join(
+      projectRootDir,
+      ".agent-talkie",
+      "bin",
+      "talkie-codex-adapter",
+    );
+    writeFileSync(codexAdapterWrapperPath, "#!/bin/sh\nexit 0\n");
+    chmodSync(codexAdapterWrapperPath, 0o755);
     writeFileSync(
       path.join(projectRootDir, ".cursor", "mcp.json"),
       JSON.stringify({
@@ -367,13 +395,186 @@ describe("talkie CLI", () => {
     const payload = JSON.parse(doctor.stdout) as {
       ok: boolean;
       checks: {
+        codexLiveSidecar: { ok: boolean; status: string };
         cursorMcpConfig: { ok: boolean; status: string };
       };
     };
     expect(payload.ok).toBe(true);
+    expect(payload.checks.codexLiveSidecar).toMatchObject({
+      ok: true,
+      status: "configured",
+    });
     expect(payload.checks.cursorMcpConfig).toMatchObject({
       ok: true,
       status: "configured",
+    });
+  });
+
+  it("starts, reports, dedupes, and stops a Codex live sidecar process", () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-codex-"));
+    projectRootDir = mkdtempSync(
+      path.join(os.tmpdir(), "agent-talkie-cli-codex-project-root-"),
+    );
+    const capturePath = path.join(projectRootDir, "codex-sidecar-env.json");
+    const fakeAdapterPath = path.join(projectRootDir, "fake-codex-adapter.mjs");
+    writeFileSync(
+      fakeAdapterPath,
+      [
+        "import { writeFileSync } from 'node:fs';",
+        "writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({",
+        "  slug: process.env.TALKIE_CODEX_JOIN_SLUG,",
+        "  name: process.env.TALKIE_CODEX_DISPLAY_NAME,",
+        "  runtime: process.env.TALKIE_CODEX_RUNTIME,",
+        "  workspaceLabel: process.env.TALKIE_CODEX_WORKSPACE_LABEL",
+        "}));",
+        "setInterval(() => {}, 1000);",
+      ].join("\n"),
+    );
+    const env = {
+      AGENT_TALKIE_DATA_DIR: dataDir,
+      AGENT_TALKIE_RELAY_PORT: "0",
+      TALKIE_CODEX_ADAPTER_COMMAND: process.execPath,
+      TALKIE_CODEX_ADAPTER_ARGS_JSON: JSON.stringify([fakeAdapterPath]),
+      CAPTURE_PATH: capturePath,
+    };
+
+    const start = runCli(
+      [
+        "codex",
+        "start",
+        "--slug",
+        "live-room",
+        "--name",
+        "Codex Lead",
+        "--workspace-label",
+        "repo",
+      ],
+      env,
+    );
+    expect(start.status).toBe(0);
+    const started = JSON.parse(start.stdout) as {
+      ok: boolean;
+      status: string;
+      pid: number;
+      slug: string;
+      runtime: string;
+    };
+    expect(started).toMatchObject({
+      ok: true,
+      status: "started",
+      slug: "live-room",
+      runtime: "codex-cli",
+    });
+    expect(started.pid).toBeGreaterThan(0);
+
+    const startAgain = runCli(
+      [
+        "codex",
+        "start",
+        "--slug",
+        "live-room",
+        "--name",
+        "Codex Lead",
+        "--workspace-label",
+        "repo",
+      ],
+      env,
+    );
+    expect(startAgain.status).toBe(0);
+    expect(JSON.parse(startAgain.stdout)).toMatchObject({
+      ok: true,
+      status: "already-running",
+      pid: started.pid,
+    });
+
+    const status = runCli(["codex", "status"], env);
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      ok: true,
+      sidecars: [
+        expect.objectContaining({
+          slug: "live-room",
+          displayName: "Codex Lead",
+          runtime: "codex-cli",
+          workspaceLabel: "repo",
+          running: true,
+        }),
+      ],
+    });
+
+    const captured = JSON.parse(readFileSync(capturePath, "utf8")) as Record<
+      string,
+      string
+    >;
+    expect(captured).toEqual({
+      slug: "live-room",
+      name: "Codex Lead",
+      runtime: "codex-cli",
+      workspaceLabel: "repo",
+    });
+
+    const stop = runCli(
+      [
+        "codex",
+        "stop",
+        "--slug",
+        "live-room",
+        "--name",
+        "Codex Lead",
+        "--workspace-label",
+        "repo",
+      ],
+      env,
+    );
+    expect(stop.status).toBe(0);
+    expect(JSON.parse(stop.stdout)).toMatchObject({
+      ok: true,
+      stopped: true,
+      pid: started.pid,
+    });
+  });
+
+  it("codex status prunes sidecar records whose process already exited", () => {
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "agent-talkie-cli-codex-stale-"));
+    const key = JSON.stringify({
+      slug: "stale-room",
+      displayName: "Codex Lead",
+      runtime: "codex-cli",
+      workspaceLabel: "repo",
+    });
+    writeFileSync(
+      path.join(dataDir, "codex-sidecars.json"),
+      `${JSON.stringify(
+        {
+          sidecars: {
+            [key]: {
+              key,
+              slug: "stale-room",
+              displayName: "Codex Lead",
+              runtime: "codex-cli",
+              workspaceLabel: "repo",
+              pid: 99999999,
+              logPath: path.join(dataDir, "stale.log"),
+              command: "talkie-codex-adapter",
+              args: [],
+              startedAtMs: Date.now(),
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const status = runCli(["codex", "status"], {
+      AGENT_TALKIE_DATA_DIR: dataDir,
+    });
+
+    expect(status.status).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      ok: true,
+      stalePruned: 1,
+      sidecars: [],
     });
   });
 
